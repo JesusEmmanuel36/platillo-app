@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "341398055821",
+    "project_id": "platillo-ce5e1",
+    "storage_bucket": "platillo-ce5e1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:341398055821:android:c9639578bb7bd694092bc4",
+        "android_client_info": {
+          "package_name": "com.platillo.platilloapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAaBMnmutvC3H3_KcoGVJ48FZbF_kW1sik"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
