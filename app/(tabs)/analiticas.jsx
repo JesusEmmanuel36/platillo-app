@@ -1,26 +1,26 @@
 // app/(tabs)/analiticas.jsx
 
 import {
-    addDoc,
-    collection,
-    onSnapshot,
-    orderBy,
-    query,
-    where,
+  addDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
-    Alert,
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Modal,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebaseConfig";
 
@@ -466,7 +466,7 @@ export default function AnaliticasScreen() {
   const maxTop = topProductos[0]?.cantidad || 1;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       <View style={styles.header}>
@@ -613,7 +613,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: "Onest_800ExtraBold",
     fontSize: 28,
-    fontWeight: "700",
     color: "#1a1a1a",
   },
   scroll: { padding: 16 },

@@ -1,8 +1,11 @@
 import {
+  Onest_100Thin,
   Onest_400Regular,
   Onest_500Medium,
   Onest_600SemiBold,
   Onest_700Bold,
+  Onest_800ExtraBold,
+  Onest_900Black,
   useFonts,
 } from "@expo-google-fonts/onest";
 import { Stack, router } from "expo-router";
@@ -31,14 +34,19 @@ function RootNavigator() {
 
 export default function RootLayout() {
   const [loaded] = useFonts({
+    Onest_100Thin,
     Onest_400Regular,
     Onest_500Medium,
     Onest_600SemiBold,
     Onest_700Bold,
+    Onest_800ExtraBold,
+    Onest_900Black,
   });
 
   useEffect(() => {
-    if (loaded) SplashScreen.hideAsync();
+    if (loaded) {
+      SplashScreen.hideAsync();
+    }
   }, [loaded]);
 
   if (!loaded) return null;

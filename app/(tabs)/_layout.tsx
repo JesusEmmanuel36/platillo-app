@@ -2,6 +2,8 @@ import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { Tabs } from "expo-router";
 import React from "react";
+import { Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Ellipse, Path } from "react-native-svg";
 
 function IconoPedidos({ color, size = 24 }: { color: string; size?: number }) {
@@ -79,18 +81,27 @@ function IconoAnaliticas({
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
         headerShown: false,
-        tabBarStyle: {
-          paddingHorizontal: 24,
+        tabBarStyle: Platform.select({
+          android: {
+            paddingHorizontal: 24,
+            paddingTop: 6,
+            paddingBottom: 10,
+            height: 64 + insets.bottom,
+          },
+          ios: {
+            paddingHorizontal: 24,
+            paddingTop: 6,
+            paddingBottom: 6,
+          },
+        }),
 
-          paddingBottom: 6,
-          paddingTop: 6,
-        },
         tabBarItemStyle: {
           justifyContent: "center",
           alignItems: "center",

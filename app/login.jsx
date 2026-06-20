@@ -117,12 +117,35 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
-  inner: { flex: 1 },
-  content: { flex: 1, paddingHorizontal: 32, justifyContent: "center" },
+  container: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
 
-  logo: { fontSize: 42, fontWeight: "800", color: ACCENT, marginBottom: 4 },
-  subtitle: { fontSize: 15, color: "#8e8e93", marginBottom: 48 },
+  inner: {
+    flex: 1,
+  },
+
+  content: {
+    flex: 1,
+    paddingHorizontal: 32,
+    justifyContent: "center",
+  },
+
+  logo: {
+    fontSize: 46,
+    fontFamily: "Onest_900Black",
+    color: ACCENT,
+    letterSpacing: -1,
+    marginBottom: 4,
+  },
+
+  subtitle: {
+    fontSize: 15,
+    fontFamily: "Onest_500Medium",
+    color: "#8e8e93",
+    marginBottom: 48,
+  },
 
   input: {
     borderWidth: 0.5,
@@ -130,12 +153,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     fontSize: 15,
+    fontFamily: "Onest_500Medium",
     color: "#1a1a1a",
     backgroundColor: "#fafafa",
     marginBottom: 12,
   },
 
-  error: { color: ACCENT, fontSize: 13, marginBottom: 12 },
+  error: {
+    color: ACCENT,
+    fontSize: 13,
+    fontFamily: "Onest_500Medium",
+    marginBottom: 12,
+  },
+
   btn: {
     backgroundColor: ACCENT,
     borderRadius: 12,
@@ -143,6 +173,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 8,
   },
-  btnDisabled: { opacity: 0.7 },
-  btnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+
+  btnDisabled: {
+    opacity: 0.7,
+  },
+
+  btnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: "Onest_700Bold",
+  },
 });

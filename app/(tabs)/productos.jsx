@@ -15,7 +15,6 @@ import {
   FlatList,
   Image,
   Modal,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -25,6 +24,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebaseConfig";
 import { uploadToCloudinary } from "../../utils/cloudinary";
@@ -386,7 +386,8 @@ function FormularioProducto({
                   <Text
                     style={[
                       styles.tipoText,
-                      opcion.type === tipo && styles.tipoTextSelected,
+                      opcion.type === TIPOS_TRADUCIDO[ti] &&
+                        styles.tipoTextSelected,
                     ]}
                   >
                     {tipo}
@@ -743,7 +744,7 @@ export default function ProductosScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       <View style={styles.header}>
@@ -757,12 +758,6 @@ export default function ProductosScreen() {
         </View>
       </View>
 
-      {productos.length === 0 && (
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>No hay productos registrados</Text>
-        </View>
-      )}
-
       <FlatList
         data={listaPlana}
         keyExtractor={(item) => item.id}
@@ -775,6 +770,11 @@ export default function ProductosScreen() {
             <Text style={styles.addBtnText}>+ Añadir producto</Text>
           </TouchableOpacity>
         }
+        ListEmptyComponent={() => (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No hay productos registrados</Text>
+          </View>
+        )}
         renderItem={({ item, index }) => (
           <>
             {indicesPorCategoria[index] !== undefined && (
@@ -847,7 +847,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: "Onest_800ExtraBold",
     fontSize: 28,
-    fontWeight: "700",
     color: "#1a1a1a",
   },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
@@ -861,9 +860,14 @@ const styles = StyleSheet.create({
     fontFamily: "Onest_500Medium",
     color: "#fff",
     fontSize: 12,
+    fontWeight: "600",
   },
   empty: { flex: 1, alignItems: "center", justifyContent: "center" },
-  emptyText: { fontFamily: "Onest_500Medium", fontSize: 14, color: "#8e8e93" },
+  emptyText: {
+    fontFamily: "Onest_600SemiBold",
+    fontSize: 14,
+    color: "#8e8e93",
+  },
   lista: { padding: 12 },
   addBtn: {
     backgroundColor: ACCENT,
@@ -1098,9 +1102,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e5e5e5",
   },
-  tipoBtnSelected: { backgroundColor: "#000", borderColor: "#000" },
+  tipoBtnSelected: {
+    backgroundColor: "#000",
+    borderColor: "#000",
+  },
   tipoText: { fontFamily: "Onest_600SemiBold", fontSize: 12, color: "#636366" },
-  tipoTextSelected: { color: "#fff" },
+  tipoTextSelected: { color: "#ffffff" },
   choiceRow: {
     flexDirection: "row",
     gap: 8,
@@ -1195,5 +1202,10 @@ const styles = StyleSheet.create({
     fontFamily: "Onest_600SemiBold",
     fontSize: 13,
     color: "#fff",
+  },
+
+  emptyContainer: {
+    alignItems: "center",
+    paddingTop: 60,
   },
 });

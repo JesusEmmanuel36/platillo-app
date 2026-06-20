@@ -2,8 +2,6 @@
 
 import { Audio } from "expo-av";
 import * as Notifications from "expo-notifications";
-import { router } from "expo-router";
-import { signOut } from "firebase/auth";
 import {
   collection,
   doc,
@@ -19,7 +17,6 @@ import {
   FlatList,
   Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -27,6 +24,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import { auth, db } from "../../firebaseConfig";
 
@@ -56,6 +55,7 @@ if (Platform.OS === "android") {
 const statusConfig = {
   preparando: { label: "Preparando", bg: "#ffecce", color: "#ff9d00" },
   listo: { label: "Listo", bg: "#ceffd2", color: "#2e7d32" },
+  en_camino: { label: "Listo", bg: "#ceffd2", color: "#2e7d32" },
   entregado: { label: "Entregado", bg: "#e8eaf6", color: "#3949ab" },
   cancelado: { label: "Cancelado", bg: "#ffa6a6", color: "#c62828" },
 };
@@ -66,6 +66,36 @@ const RAZONES_CANCELACION = [
   "Error en stock",
   "Producto descontinuado",
 ];
+
+function renderOpciones(options = {}) {
+  return Object.entries(options).map(([titulo, valor], index) => {
+    let texto = "";
+
+    // Radio
+    if (valor?.name) {
+      texto = valor.name;
+    }
+
+    // Checkbox
+    else if (Array.isArray(valor)) {
+      texto = valor.map((op) => op.name).join(", ");
+    }
+
+    // Addable
+    else if (typeof valor === "object" && valor !== null) {
+      texto = Object.values(valor)
+        .map((op) => `${op.name} x${op.quantity || 1}`)
+        .join(", ");
+    }
+
+    return (
+      <Text key={index} style={styles.itemOpt}>
+        <Text style={styles.itemOptTitle}>{titulo}: </Text>
+        {texto}
+      </Text>
+    );
+  });
+}
 
 function StatusBadge({ status }) {
   const cfg = statusConfig[status] ?? {
@@ -82,10 +112,7 @@ function StatusBadge({ status }) {
 
 function PedidoCard({ pedido, onPress }) {
   const resumen = pedido.items
-    .map((it) => {
-      const opt = Object.values(it.options)[0];
-      return `${it.name} ×${it.quantity}${opt ? ` · ${opt.name}` : ""}`;
-    })
+    .map((it) => `${it.quantity} ${it.name}`)
     .join(", ");
 
   const recoge = pedido.entrega.tipo === "local";
@@ -139,13 +166,62 @@ function DetallePedido({ pedido, onClose }) {
     return `${date.getDate()} ${date.toLocaleString("es-MX", { month: "short" })} · ${time}`;
   };
 
+  async function enviarWhatsApp(endpoint, body) {
+    if (!auth.currentUser) {
+      throw new Error("Usuario no autenticado");
+    }
+
+    const token = await auth.currentUser.getIdToken();
+
+    const response = await fetch(
+      `https://platillo.mx/api/whatsapp/${endpoint}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      },
+    );
+
+    const text = await response.text();
+
+    console.log("STATUS API:", response.status);
+    console.log("RESPUESTA API:", text);
+
+    if (!response.ok) {
+      throw new Error(text);
+    }
+
+    return text;
+  }
+
   async function handleMarcarListo() {
     try {
       setLoading(true);
-      await updateDoc(doc(db, "orders", pedido.id), { status: "listo" });
+
+      const esDomicilio = pedido.entrega.tipo === "domicilio";
+
+      const nuevoStatus = esDomicilio ? "en_camino" : "listo";
+      const endpoint = esDomicilio ? "pedido-en-camino" : "pedido-listo";
+
+      await updateDoc(doc(db, "orders", pedido.id), {
+        status: nuevoStatus,
+      });
+
+      await enviarWhatsApp(endpoint, {
+        orderId: pedido.id,
+      });
+
       onClose();
     } catch (e) {
-      Alert.alert("Error", "No se pudo actualizar el pedido");
+      console.log(e);
+      Alert.alert(
+        "Pedido actualizado",
+        "El pedido cambió de estado, pero no se pudo enviar WhatsApp.",
+      );
+      onClose();
     } finally {
       setLoading(false);
     }
@@ -156,16 +232,30 @@ function DetallePedido({ pedido, onClose }) {
       Alert.alert("Selecciona una razón", "Elige el motivo de cancelación");
       return;
     }
+
     try {
       setLoading(true);
+
       await updateDoc(doc(db, "orders", pedido.id), {
         status: "cancelado",
         razonCancelacion: razonSeleccionada,
       });
+
+      await enviarWhatsApp("pedido-cancelado", {
+        orderId: pedido.id,
+        razonCancelacion: razonSeleccionada,
+      });
+
       setModalCancelar(false);
       onClose();
     } catch (e) {
-      Alert.alert("Error", "No se pudo cancelar el pedido");
+      console.log(e);
+      Alert.alert(
+        "Pedido cancelado",
+        "El pedido se canceló, pero no se pudo enviar WhatsApp.",
+      );
+      setModalCancelar(false);
+      onClose();
     } finally {
       setLoading(false);
     }
@@ -273,9 +363,6 @@ function DetallePedido({ pedido, onClose }) {
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Productos</Text>
                 {pedido.items.map((item, i) => {
-                  const opts = Object.entries(item.options)
-                    .map(([k, v]) => `${k}: ${v.name} +$${v.price}`)
-                    .join(" · ");
                   return (
                     <View key={i} style={styles.itemRow}>
                       <View style={styles.itemQty}>
@@ -283,9 +370,7 @@ function DetallePedido({ pedido, onClose }) {
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.itemName}>{item.name}</Text>
-                        {opts ? (
-                          <Text style={styles.itemOpt}>{opts}</Text>
-                        ) : null}
+                        {renderOpciones(item.options)}
                         {item.note ? (
                           <Text style={[styles.itemOpt, { color: ACCENT }]}>
                             Nota: {item.note}
@@ -366,7 +451,9 @@ export default function PedidosScreen() {
   const sonidoRef = useRef(null);
 
   const enCurso = pedidos.filter((p) => p.status === "preparando");
-  const listos = pedidos.filter((p) => p.status === "listo");
+  const listos = pedidos.filter(
+    (p) => p.status === "listo" || p.status === "en_camino",
+  );
   const cancelados = pedidos.filter((p) => p.status === "cancelado");
 
   // Pedir permisos de notificaciones al montar
@@ -456,22 +543,8 @@ export default function PedidosScreen() {
     return () => unsubscribe();
   }, [restaurantId]);
 
-  function handleCerrarSesion() {
-    Alert.alert("Cerrar sesión", "¿Seguro que quieres cerrar sesión?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Cerrar sesión",
-        style: "destructive",
-        onPress: async () => {
-          await signOut(auth);
-          router.replace("/login");
-        },
-      },
-    ]);
-  }
-
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       {/* Header */}
@@ -481,12 +554,6 @@ export default function PedidosScreen() {
           <View style={styles.headerBadge}>
             <Text style={styles.headerBadgeText}>{enCurso.length} activos</Text>
           </View>
-          <TouchableOpacity
-            onPress={handleCerrarSesion}
-            style={styles.logoutBtn}
-          >
-            <Text style={styles.logoutIcon}>⎋</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -553,7 +620,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontFamily: "Onest_800ExtraBold",
     fontSize: 28,
-    fontWeight: "700",
     color: "#1a1a1a",
   },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
@@ -564,10 +630,9 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   headerBadgeText: {
-    fontFamily: "Onest_100Thin",
+    fontFamily: "Onest_500Medium",
     color: "#fff",
     fontSize: 12,
-    fontWeight: "600",
   },
   logoutBtn: {
     width: 34,
@@ -579,7 +644,11 @@ const styles = StyleSheet.create({
   },
   logoutIcon: { fontSize: 18, color: "#636366" },
   empty: { flex: 1, alignItems: "center", justifyContent: "center" },
-  emptyText: { fontSize: 14, color: "#8e8e93" },
+  emptyText: {
+    fontFamily: "Onest_600SemiBold",
+    fontSize: 14,
+    color: "#8e8e93",
+  },
   lista: { padding: 12 },
   sectionLabel: {
     fontSize: 11,
@@ -655,7 +724,6 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontFamily: "Onest_700Bold",
     fontSize: 17,
-    fontWeight: "700",
     color: "#1a1a1a",
   },
   closeBtn: {
@@ -686,11 +754,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 8,
   },
-  infoLabel: { fontSize: 13, color: "#656565" },
+  infoLabel: { fontFamily: "Onest_500Medium", fontSize: 13, color: "#656565" },
   infoValue: {
     fontFamily: "Onest_700Bold",
     fontSize: 13,
-    fontWeight: "500",
     color: "#000000",
   },
   itemRow: {
@@ -734,13 +801,11 @@ const styles = StyleSheet.create({
   totalLabel: {
     fontFamily: "Onest_700Bold",
     fontSize: 20,
-    fontWeight: "700",
     color: "#1a1a1a",
   },
   totalAmount: {
     fontFamily: "Onest_700Bold",
     fontSize: 20,
-    fontWeight: "700",
     color: ACCENT,
   },
   accionBtn: {
@@ -817,6 +882,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: "#000",
     alignItems: "center",
+  },
+  itemOptTitle: {
+    fontFamily: "Onest_600SemiBold",
+    color: "#000000",
   },
   cancelConfirmBtnText: { fontSize: 15, fontWeight: "600", color: "#fff" },
 });
