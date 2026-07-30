@@ -214,6 +214,11 @@ function DetallePedido({ pedido, onClose }) {
         orderId: pedido.id,
       });
 
+      Alert.alert(
+        "Mensaje enviado",
+        "La actualización del pedido se envió por WhatsApp.",
+      );
+
       onClose();
     } catch (e) {
       console.log(e);
@@ -245,6 +250,11 @@ function DetallePedido({ pedido, onClose }) {
         orderId: pedido.id,
         razonCancelacion: razonSeleccionada,
       });
+
+      Alert.alert(
+        "Mensaje enviado",
+        "La actualización del pedido se envió por WhatsApp.",
+      );
 
       setModalCancelar(false);
       onClose();
@@ -395,6 +405,16 @@ function DetallePedido({ pedido, onClose }) {
                   </>
                 )}
               </View>
+
+              {pedido.costoEnvio > 0 && (
+                <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+                  <InfoRow
+                    label="Subtotal"
+                    value={`$${pedido.total - pedido.costoEnvio}`}
+                  />
+                  <InfoRow label="Envío" value={`$${pedido.costoEnvio}`} />
+                </View>
+              )}
 
               <View style={styles.totalRow}>
                 <Text style={styles.totalLabel}>Total</Text>

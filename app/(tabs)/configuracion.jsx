@@ -1,15 +1,18 @@
 // app/(tabs)/configuracion.jsx
 
+import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { signOut } from "firebase/auth";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
+
 import {
   Alert,
   Dimensions,
   Image,
+  Linking,
   PanResponder,
   ScrollView,
   StatusBar,
@@ -20,6 +23,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import { auth, db } from "../../firebaseConfig";
@@ -333,6 +337,7 @@ export default function ConfiguracionScreen() {
   const [hue, setHue] = useState(0);
   const [saturation, setSaturation] = useState(1);
   const [brightness, setBrightness] = useState(1);
+  const [mostrarColorPicker, setMostrarColorPicker] = useState(false);
 
   const { restaurantId } = useAuth();
   const [restaurante, setRestaurante] = useState(null);
@@ -360,8 +365,80 @@ export default function ConfiguracionScreen() {
   const [hexInput, setHexInput] = useState("#e83906");
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
   const [deliveryPrice, setDeliveryPrice] = useState("");
+  const [connectingWhatsapp, setConnectingWhatsapp] = useState(false);
 
   const router = useRouter();
+
+  const whatsapp = restaurante?.whatsapp || {};
+
+  const whatsappConnected =
+    whatsapp.enabled === true && !!whatsapp.phoneNumberId;
+
+  const whatsappModeLabel =
+    whatsapp.mode === "auto_reply"
+      ? "Autorrespuesta con menú"
+      : whatsapp.mode === "ai"
+        ? "Chatbot con IA"
+        : "Sin configurar";
+
+  const whatsappDisplayPhone =
+    whatsapp.displayPhoneNumber || "Sin número conectado";
+
+  async function abrirConexionWhatsapp() {
+    if (!restaurantId) {
+      Alert.alert("Error", "No se encontró el restaurante actual.");
+      return;
+    }
+
+    const currentUser = auth.currentUser;
+
+    if (!currentUser) {
+      Alert.alert("Error", "Tu sesión expiró. Inicia sesión nuevamente.");
+      return;
+    }
+
+    try {
+      setConnectingWhatsapp(true);
+
+      const idToken = await currentUser.getIdToken();
+
+      const response = await fetch(
+        "https://platillo.mx/api/whatsapp/connect-session",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            restaurantId,
+          }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data?.connectUrl) {
+        console.error("Error connect-session:", data);
+
+        Alert.alert(
+          "Error",
+          data?.error || "No se pudo generar el enlace de conexión.",
+        );
+
+        return;
+      }
+
+      await Clipboard.setStringAsync(data.connectUrl);
+      await Linking.openURL(data.connectUrl);
+    } catch (error) {
+      console.error("Error abriendo WhatsApp connect:", error);
+
+      Alert.alert("Error", "No se pudo abrir la conexión de WhatsApp.");
+    } finally {
+      setConnectingWhatsapp(false);
+    }
+  }
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -602,15 +679,18 @@ export default function ConfiguracionScreen() {
             <View
               style={[styles.colorPreviewBox, { backgroundColor: accentColor }]}
             />
+
             <TextInput
               style={styles.hexInput}
               value={hexInput}
               onChangeText={(text) => {
                 setHexInput(text);
                 const formatted = text.startsWith("#") ? text : `#${text}`;
+
                 if (esHexValido(formatted)) {
                   setAccentColor(formatted);
                   setHexInput(formatted);
+
                   const { h, s, v } = hexToHsv(formatted);
                   setHue(h);
                   setSaturation(s);
@@ -625,36 +705,48 @@ export default function ConfiguracionScreen() {
             />
           </View>
 
-          <View
-            onTouchStart={() => setScrollEnabled(false)}
-            onTouchEnd={() => setScrollEnabled(true)}
-            onTouchCancel={() => setScrollEnabled(true)}
+          <TouchableOpacity
+            style={styles.cambiarImagenBtn}
+            onPress={() => setMostrarColorPicker(!mostrarColorPicker)}
           >
-            <ColorPickerRect
-              hue={hue}
-              saturation={saturation}
-              brightness={brightness}
-              onHueChange={(h) => {
-                setHue(h);
-                const hex = hsvToHex(h, saturation, brightness);
-                setAccentColor(hex);
-                setHexInput(hex);
-              }}
-              onSvChange={(s, v) => {
-                setSaturation(s);
-                setBrightness(v);
-                const hex = hsvToHex(hue, s, v);
-                setAccentColor(hex);
-                setHexInput(hex);
-              }}
-              onBrightnessChange={(v) => {
-                setBrightness(v);
-                const hex = hsvToHex(hue, saturation, v);
-                setAccentColor(hex);
-                setHexInput(hex);
-              }}
-            />
-          </View>
+            <Text style={styles.cambiarImagenText}>
+              {mostrarColorPicker ? "Ocultar editor de color" : "Editar color"}
+            </Text>
+          </TouchableOpacity>
+
+          {mostrarColorPicker && (
+            <View
+              style={{ marginTop: 14 }}
+              onTouchStart={() => setScrollEnabled(false)}
+              onTouchEnd={() => setScrollEnabled(true)}
+              onTouchCancel={() => setScrollEnabled(true)}
+            >
+              <ColorPickerRect
+                hue={hue}
+                saturation={saturation}
+                brightness={brightness}
+                onHueChange={(h) => {
+                  setHue(h);
+                  const hex = hsvToHex(h, saturation, brightness);
+                  setAccentColor(hex);
+                  setHexInput(hex);
+                }}
+                onSvChange={(s, v) => {
+                  setSaturation(s);
+                  setBrightness(v);
+                  const hex = hsvToHex(hue, s, v);
+                  setAccentColor(hex);
+                  setHexInput(hex);
+                }}
+                onBrightnessChange={(v) => {
+                  setBrightness(v);
+                  const hex = hsvToHex(hue, saturation, v);
+                  setAccentColor(hex);
+                  setHexInput(hex);
+                }}
+              />
+            </View>
+          )}
 
           <Text style={[styles.fieldHint, { marginTop: 12 }]}>
             Este color se usará como color principal en la página de tu negocio.
@@ -695,6 +787,95 @@ export default function ConfiguracionScreen() {
             autoCapitalize="none"
           />
         </View>
+
+        {false && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>WhatsApp Business</Text>
+
+            <View style={styles.whatsappHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.switchLabel}>
+                  {whatsappConnected
+                    ? "WhatsApp conectado"
+                    : "Conecta tu WhatsApp"}
+                </Text>
+
+                <Text style={styles.fieldHint}>
+                  {whatsappConnected
+                    ? "Platillo puede enviar automáticamente el enlace de tu menú cuando un cliente te escriba."
+                    : "Conecta tu WhatsApp Business para enviar tu menú automáticamente cuando te escriban."}
+                </Text>
+              </View>
+
+              <View
+                style={[
+                  styles.whatsappStatusBadge,
+                  whatsappConnected
+                    ? styles.whatsappStatusConnected
+                    : styles.whatsappStatusDisconnected,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.whatsappStatusText,
+                    whatsappConnected
+                      ? styles.whatsappStatusTextConnected
+                      : styles.whatsappStatusTextDisconnected,
+                  ]}
+                >
+                  {whatsappConnected ? "Activo" : "Pendiente"}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.whatsappInfoBox}>
+              <View style={styles.whatsappInfoRow}>
+                <Text style={styles.whatsappInfoLabel}>Número</Text>
+                <Text style={styles.whatsappInfoValue}>
+                  {whatsappDisplayPhone}
+                </Text>
+              </View>
+
+              <View style={styles.whatsappInfoRow}>
+                <Text style={styles.whatsappInfoLabel}>Modo</Text>
+                <Text style={styles.whatsappInfoValue}>
+                  {whatsappModeLabel}
+                </Text>
+              </View>
+
+              {whatsapp.phoneNumberId ? (
+                <View style={styles.whatsappInfoRow}>
+                  <Text style={styles.whatsappInfoLabel}>ID del número</Text>
+                  <Text style={styles.whatsappInfoValueSmall}>
+                    {whatsapp.phoneNumberId}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.whatsappConnectBtn,
+                connectingWhatsapp && { opacity: 0.6 },
+              ]}
+              onPress={abrirConexionWhatsapp}
+              disabled={connectingWhatsapp}
+            >
+              <Text style={styles.whatsappConnectText}>
+                {connectingWhatsapp
+                  ? "Generando enlace..."
+                  : whatsappConnected
+                    ? "Administrar WhatsApp Business"
+                    : "Conectar WhatsApp Business"}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={styles.fieldHint}>
+              El número puede seguir usándose en WhatsApp Business si la
+              conexión se hace mediante el flujo de coexistencia.
+            </Text>
+          </View>
+        )}
 
         {/* ── Ubicación ── */}
         <View style={styles.section}>
@@ -824,15 +1005,17 @@ export default function ConfiguracionScreen() {
             />
           </View>
 
-          <View style={[styles.switchRow, { marginTop: 16 }]}>
-            <Text style={styles.switchLabel}>Tarjeta</Text>
-            <Switch
-              value={card}
-              onValueChange={setCard}
-              trackColor={{ false: "#e5e5e5", true: ACCENT_LIGHT }}
-              thumbColor={card ? ACCENT : "#ccc"}
-            />
-          </View>
+          {false && (
+            <View style={[styles.switchRow, { marginTop: 16 }]}>
+              <Text style={styles.switchLabel}>Tarjeta</Text>
+              <Switch
+                value={card}
+                onValueChange={setCard}
+                trackColor={{ false: "#e5e5e5", true: ACCENT_LIGHT }}
+                thumbColor={card ? ACCENT : "#ccc"}
+              />
+            </View>
+          )}
 
           <View style={[styles.switchRow, { marginTop: 16 }]}>
             <Text style={styles.switchLabel}>Transferencia</Text>
@@ -1111,5 +1294,92 @@ const styles = StyleSheet.create({
     color: "#1a1a1a",
     borderWidth: 1,
     borderColor: "#ececec",
+  },
+
+  whatsappHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 14,
+  },
+
+  whatsappStatusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+
+  whatsappStatusConnected: {
+    backgroundColor: "#e7f8ec",
+  },
+
+  whatsappStatusDisconnected: {
+    backgroundColor: "#fff3e8",
+  },
+
+  whatsappStatusText: {
+    fontFamily: "Onest_700Bold",
+    fontSize: 11,
+  },
+
+  whatsappStatusTextConnected: {
+    color: "#1f7a3a",
+  },
+
+  whatsappStatusTextDisconnected: {
+    color: "#c55a00",
+  },
+
+  whatsappInfoBox: {
+    backgroundColor: "#f6f6f6",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#ececec",
+  },
+
+  whatsappInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 6,
+  },
+
+  whatsappInfoLabel: {
+    fontFamily: "Onest_600SemiBold",
+    fontSize: 12,
+    color: "#8e8e93",
+  },
+
+  whatsappInfoValue: {
+    fontFamily: "Onest_700Bold",
+    fontSize: 13,
+    color: "#1a1a1a",
+    textAlign: "right",
+    flex: 1,
+  },
+
+  whatsappInfoValueSmall: {
+    fontFamily: "Onest_500Medium",
+    fontSize: 11,
+    color: "#1a1a1a",
+    textAlign: "right",
+    flex: 1,
+  },
+
+  whatsappConnectBtn: {
+    backgroundColor: "#25D366",
+    borderRadius: 12,
+    padding: 14,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+
+  whatsappConnectText: {
+    fontFamily: "Onest_800ExtraBold",
+    color: "#fff",
+    fontSize: 14,
   },
 });
