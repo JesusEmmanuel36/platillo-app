@@ -1,5 +1,8 @@
 // app/(tabs)/analiticas.jsx
 
+import * as FileSystem from "expo-file-system/legacy";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 import {
   addDoc,
   collection,
@@ -34,6 +37,39 @@ const METODOS_LABEL = {
   tarjeta: "Tarjeta",
   transferencia: "Transferencia",
 };
+
+function escaparHtml(valor = "") {
+  return String(valor)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function formatoDinero(valor) {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    minimumFractionDigits: 2,
+  }).format(Number(valor) || 0);
+}
+
+function formatoFechaCorte(fecha = new Date()) {
+  return fecha.toLocaleDateString("es-MX", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function formatoHora(fecha = new Date()) {
+  return fecha.toLocaleTimeString("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 function fechaInicio(filtro) {
   const hoy = new Date();
@@ -273,26 +309,413 @@ function ModalVentaManual({ visible, onClose, restaurantId }) {
   );
 }
 
-function ModalCorte({ visible, onClose, pedidosHoy, manualesHoy }) {
-  const totalesPago = { efectivo: 0, tarjeta: 0, transferencia: 0 };
+function ModalCorte({
+  visible,
+  onClose,
+  pedidosHoy,
+  manualesHoy,
+  nombreRestaurante = "Platillo",
+}) {
+  const [descargando, setDescargando] = useState(false);
 
-  pedidosHoy.forEach((p) => {
-    const m = p.pago?.metodo;
-    if (totalesPago[m] !== undefined) totalesPago[m] += p.total || 0;
+  const totalesPago = {
+    efectivo: 0,
+    tarjeta: 0,
+    transferencia: 0,
+  };
+
+  pedidosHoy.forEach((pedido) => {
+    const metodo = pedido.pago?.metodo;
+
+    if (totalesPago[metodo] !== undefined) {
+      totalesPago[metodo] += Number(pedido.total) || 0;
+    }
   });
 
-  manualesHoy.forEach((p) => {
-    const m = p.metodo;
-    if (totalesPago[m] !== undefined) totalesPago[m] += p.total || 0;
+  manualesHoy.forEach((venta) => {
+    const metodo = venta.metodo;
+
+    if (totalesPago[metodo] !== undefined) {
+      totalesPago[metodo] += Number(venta.total) || 0;
+    }
   });
 
-  const totalGeneral = Object.values(totalesPago).reduce((a, b) => a + b, 0);
-  const hoy = new Date().toLocaleDateString("es-MX", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  const totalGeneral = Object.values(totalesPago).reduce(
+    (acumulado, total) => acumulado + total,
+    0,
+  );
+
+  const cantidadApp = pedidosHoy.length;
+  const cantidadManuales = manualesHoy.length;
+  const totalMovimientos = cantidadApp + cantidadManuales;
+
+  const hoy = formatoFechaCorte();
+  const horaGeneracion = formatoHora();
+
+  async function descargarCorte() {
+    try {
+      setDescargando(true);
+
+      const html = `
+        <!DOCTYPE html>
+        <html lang="es">
+          <head>
+            <meta charset="UTF-8" />
+
+            <meta
+              name="viewport"
+              content="width=device-width, initial-scale=1.0"
+            />
+
+            <style>
+              @page {
+                size: A4;
+                margin: 0;
+              }
+
+              * {
+                box-sizing: border-box;
+              }
+
+              body {
+                margin: 0;
+                padding: 0;
+                background: #f4f4f5;
+                color: #18181b;
+                font-family:
+                  -apple-system,
+                  BlinkMacSystemFont,
+                  "Segoe UI",
+                  Arial,
+                  sans-serif;
+              }
+
+              .page {
+                width: 100%;
+                min-height: 100vh;
+                padding: 42px;
+                background: #ffffff;
+              }
+
+              .top-line {
+                height: 7px;
+                width: 100%;
+                background: #e83906;
+                border-radius: 999px;
+                margin-bottom: 32px;
+              }
+
+              .header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 24px;
+                margin-bottom: 34px;
+              }
+
+              .brand {
+                font-size: 32px;
+                line-height: 1;
+                font-weight: 900;
+                color: #e83906;
+                letter-spacing: -1px;
+                margin-bottom: 10px;
+              }
+
+              .title {
+                margin: 0;
+                color: #18181b;
+                font-size: 23px;
+                font-weight: 800;
+              }
+
+              .date {
+                margin-top: 8px;
+                color: #71717a;
+                font-size: 13px;
+                text-transform: capitalize;
+              }
+
+              .generated {
+                padding: 11px 15px;
+                border: 1px solid #e4e4e7;
+                border-radius: 12px;
+                color: #71717a;
+                font-size: 11px;
+                text-align: right;
+                white-space: nowrap;
+              }
+
+              .hero {
+                padding: 24px;
+                border-radius: 18px;
+                background: #fff4ef;
+                border: 1px solid #ffd9c7;
+                margin-bottom: 24px;
+              }
+
+              .hero-label {
+                color: #9a3412;
+                font-size: 11px;
+                font-weight: 800;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+                margin-bottom: 8px;
+              }
+
+              .hero-total {
+                color: #e83906;
+                font-size: 38px;
+                line-height: 1.1;
+                font-weight: 900;
+                letter-spacing: -1px;
+              }
+
+              .section {
+                margin-top: 25px;
+              }
+
+              .section-title {
+                margin: 0 0 12px;
+                color: #3f3f46;
+                font-size: 11px;
+                font-weight: 800;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+              }
+
+              .card {
+                overflow: hidden;
+                border: 1px solid #e4e4e7;
+                border-radius: 16px;
+                background: #ffffff;
+              }
+
+              .row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                min-height: 50px;
+                padding: 13px 17px;
+                border-bottom: 1px solid #f1f1f2;
+              }
+
+              .row:last-child {
+                border-bottom: none;
+              }
+
+              .row-label {
+                color: #52525b;
+                font-size: 14px;
+              }
+
+              .row-value {
+                color: #18181b;
+                font-size: 14px;
+                font-weight: 700;
+              }
+
+              .row.total {
+                background: #fafafa;
+              }
+
+              .row.total .row-label {
+                color: #18181b;
+                font-size: 15px;
+                font-weight: 800;
+              }
+
+              .row.total .row-value {
+                color: #e83906;
+                font-size: 18px;
+                font-weight: 900;
+              }
+
+              .stats {
+                display: flex;
+                gap: 12px;
+              }
+
+              .stat {
+                flex: 1;
+                padding: 18px;
+                border: 1px solid #e4e4e7;
+                border-radius: 16px;
+                background: #ffffff;
+              }
+
+              .stat-value {
+                color: #18181b;
+                font-size: 25px;
+                font-weight: 900;
+                margin-bottom: 5px;
+              }
+
+              .stat-label {
+                color: #71717a;
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              }
+
+              .footer {
+                margin-top: 42px;
+                padding-top: 18px;
+                border-top: 1px solid #e4e4e7;
+                text-align: center;
+                color: #a1a1aa;
+                font-size: 10px;
+              }
+
+              .footer-brand {
+                color: #e83906;
+                font-weight: 800;
+              }
+            </style>
+          </head>
+
+          <body>
+            <main class="page">
+              <div class="top-line"></div>
+
+              <header class="header">
+                <div>
+                  <div class="brand">Platillo</div>
+                  <h1 class="title">
+                    Corte diario
+                  </h1>
+
+                  <div class="date">
+                    ${escaparHtml(hoy)}
+                  </div>
+                </div>
+
+                <div class="generated">
+                  Generado<br />
+                  ${escaparHtml(horaGeneracion)}
+                </div>
+              </header>
+
+              <section class="hero">
+                <div class="hero-label">Venta total del día</div>
+
+                <div class="hero-total">
+                  ${formatoDinero(totalGeneral)}
+                </div>
+              </section>
+
+              <section class="section">
+                <h2 class="section-title">Desglose por método de pago</h2>
+
+                <div class="card">
+                  <div class="row">
+                    <span class="row-label">Efectivo</span>
+
+                    <span class="row-value">
+                      ${formatoDinero(totalesPago.efectivo)}
+                    </span>
+                  </div>
+
+                  <div class="row">
+                    <span class="row-label">Tarjeta</span>
+
+                    <span class="row-value">
+                      ${formatoDinero(totalesPago.tarjeta)}
+                    </span>
+                  </div>
+
+                  <div class="row">
+                    <span class="row-label">Transferencia</span>
+
+                    <span class="row-value">
+                      ${formatoDinero(totalesPago.transferencia)}
+                    </span>
+                  </div>
+
+                  <div class="row total">
+                    <span class="row-label">Total</span>
+
+                    <span class="row-value">
+                      ${formatoDinero(totalGeneral)}
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="section">
+                <h2 class="section-title">Movimientos registrados</h2>
+
+                <div class="stats">
+                  <div class="stat">
+                    <div class="stat-value">${cantidadApp}</div>
+                    <div class="stat-label">Pedidos app</div>
+                  </div>
+
+                  <div class="stat">
+                    <div class="stat-value">${cantidadManuales}</div>
+                    <div class="stat-label">Ventas manuales</div>
+                  </div>
+
+                  <div class="stat">
+                    <div class="stat-value">${totalMovimientos}</div>
+                    <div class="stat-label">Total pedidos</div>
+                  </div>
+                </div>
+              </section>
+
+              <footer class="footer">
+                Reporte generado automáticamente por
+                <span class="footer-brand">Platillo</span>.
+              </footer>
+            </main>
+          </body>
+        </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({
+        html,
+        base64: false,
+      });
+
+      const ahora = new Date();
+
+      const fecha = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}-${String(ahora.getDate()).padStart(2, "0")}`;
+
+      const nombreArchivo = `Corte_${fecha}.pdf`;
+      const nuevoUri = FileSystem.cacheDirectory + nombreArchivo;
+
+      await FileSystem.copyAsync({
+        from: uri,
+        to: nuevoUri,
+      });
+
+      const compartirDisponible = await Sharing.isAvailableAsync();
+
+      if (!compartirDisponible) {
+        Alert.alert(
+          "PDF generado",
+          "El corte se generó, pero este dispositivo no permite compartir archivos.",
+        );
+        return;
+      }
+
+      await Sharing.shareAsync(nuevoUri, {
+        mimeType: "application/pdf",
+        UTI: "com.adobe.pdf",
+        dialogTitle: "Guardar o compartir corte de hoy",
+      });
+    } catch (error) {
+      console.error("Error generando corte:", error);
+
+      Alert.alert(
+        "No se pudo generar el corte",
+        "Ocurrió un problema al crear el archivo PDF.",
+      );
+    } finally {
+      setDescargando(false);
+    }
+  }
 
   return (
     <Modal
@@ -304,73 +727,86 @@ function ModalCorte({ visible, onClose, pedidosHoy, manualesHoy }) {
       <View style={styles.overlay}>
         <View style={styles.modal}>
           <View style={styles.modalHandle} />
+
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Corte de hoy</Text>
+
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={{ padding: 20 }}>
-            <Text
-              style={[
-                styles.fieldHint,
-                { marginBottom: 16, textTransform: "capitalize" },
-              ]}
-            >
-              {hoy}
-            </Text>
+          <ScrollView
+            contentContainerStyle={styles.corteModalContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.corteFecha}>{hoy}</Text>
 
-            {METODOS.map((m) => (
-              <View key={m} style={styles.corteRow}>
-                <Text style={styles.corteLabel}>{METODOS_LABEL[m]}</Text>
-                <Text style={styles.corteValor}>
-                  ${totalesPago[m].toFixed(2)}
+            <View style={styles.corteResumen}>
+              <Text style={styles.corteResumenLabel}>Venta total del día</Text>
+
+              <Text style={styles.corteResumenTotal}>
+                {formatoDinero(totalGeneral)}
+              </Text>
+            </View>
+
+            <Text style={styles.corteSeccionTitulo}>Métodos de pago</Text>
+
+            <View style={styles.corteDetalleCard}>
+              {METODOS.map((metodo) => (
+                <View key={metodo} style={styles.corteRow}>
+                  <Text style={styles.corteLabel}>{METODOS_LABEL[metodo]}</Text>
+
+                  <Text style={styles.corteValor}>
+                    {formatoDinero(totalesPago[metodo])}
+                  </Text>
+                </View>
+              ))}
+
+              <View style={styles.corteDivider} />
+
+              <View style={[styles.corteRow, { marginBottom: 0 }]}>
+                <Text style={styles.corteTotalLabel}>Total</Text>
+
+                <Text style={styles.corteTotalValor}>
+                  {formatoDinero(totalGeneral)}
                 </Text>
               </View>
-            ))}
-
-            <View style={styles.corteDivider} />
-
-            <View style={styles.corteRow}>
-              <Text
-                style={[
-                  styles.corteLabel,
-                  { fontFamily: "Onest_700Bold", fontSize: 16 },
-                ]}
-              >
-                Total
-              </Text>
-              <Text
-                style={[styles.corteValor, { color: ACCENT, fontSize: 20 }]}
-              >
-                ${totalGeneral.toFixed(2)}
-              </Text>
             </View>
 
-            <View style={styles.corteDivider} />
+            <Text style={styles.corteSeccionTitulo}>Movimientos</Text>
 
-            <View style={styles.corteRow}>
-              <Text style={styles.corteLabel}>Pedidos app</Text>
-              <Text style={styles.corteValor}>{pedidosHoy.length}</Text>
+            <View style={styles.corteStatsRow}>
+              <View style={styles.corteStat}>
+                <Text style={styles.corteStatValue}>{cantidadApp}</Text>
+                <Text style={styles.corteStatLabel}>App</Text>
+              </View>
+
+              <View style={styles.corteStat}>
+                <Text style={styles.corteStatValue}>{cantidadManuales}</Text>
+                <Text style={styles.corteStatLabel}>Manuales</Text>
+              </View>
+
+              <View style={styles.corteStat}>
+                <Text style={styles.corteStatValue}>{totalMovimientos}</Text>
+                <Text style={styles.corteStatLabel}>Total</Text>
+              </View>
             </View>
-            <View style={styles.corteRow}>
-              <Text style={styles.corteLabel}>Ventas manuales</Text>
-              <Text style={styles.corteValor}>{manualesHoy.length}</Text>
-            </View>
-            <View style={styles.corteRow}>
-              <Text
-                style={[styles.corteLabel, { fontFamily: "Onest_700Bold" }]}
-              >
-                Total pedidos
+
+            <TouchableOpacity
+              style={[
+                styles.descargarCorteBtn,
+                descargando && styles.descargarCorteBtnDisabled,
+              ]}
+              onPress={descargarCorte}
+              disabled={descargando}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.descargarCorteBtnText}>
+                {descargando ? "Generando PDF..." : "Descargar corte en PDF"}
               </Text>
-              <Text
-                style={[styles.corteValor, { fontFamily: "Onest_700Bold" }]}
-              >
-                {pedidosHoy.length + manualesHoy.length}
-              </Text>
-            </View>
-          </View>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -860,4 +1296,121 @@ const styles = StyleSheet.create({
   chipBtnSelected: { backgroundColor: ACCENT_LIGHT, borderColor: ACCENT },
   chipText: { fontFamily: "Onest_600SemiBold", fontSize: 13, color: "#636366" },
   chipTextSelected: { color: ACCENT },
+
+  corteModalContent: {
+    padding: 20,
+    paddingBottom: 34,
+  },
+
+  corteFecha: {
+    fontFamily: "Onest_500Medium",
+    fontSize: 13,
+    color: "#8e8e93",
+    textTransform: "capitalize",
+    marginBottom: 16,
+  },
+
+  corteResumen: {
+    backgroundColor: ACCENT_LIGHT,
+    borderRadius: 18,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: "#ffd4c5",
+  },
+
+  corteResumenLabel: {
+    fontFamily: "Onest_700Bold",
+    fontSize: 11,
+    color: "#a63b18",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 6,
+  },
+
+  corteResumenTotal: {
+    fontFamily: "Onest_900Black",
+    fontSize: 32,
+    color: ACCENT,
+    letterSpacing: -0.8,
+  },
+
+  corteSeccionTitulo: {
+    fontFamily: "Onest_800ExtraBold",
+    fontSize: 11,
+    color: "#636366",
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+    marginBottom: 10,
+  },
+
+  corteDetalleCard: {
+    backgroundColor: "#fafafa",
+    borderWidth: 1,
+    borderColor: "#ededed",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+  },
+
+  corteTotalLabel: {
+    fontFamily: "Onest_800ExtraBold",
+    fontSize: 16,
+    color: "#1a1a1a",
+  },
+
+  corteTotalValor: {
+    fontFamily: "Onest_900Black",
+    fontSize: 19,
+    color: ACCENT,
+  },
+
+  corteStatsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 24,
+  },
+
+  corteStat: {
+    flex: 1,
+    backgroundColor: "#fafafa",
+    borderWidth: 1,
+    borderColor: "#ededed",
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    alignItems: "center",
+  },
+
+  corteStatValue: {
+    fontFamily: "Onest_900Black",
+    fontSize: 22,
+    color: "#1a1a1a",
+    marginBottom: 3,
+  },
+
+  corteStatLabel: {
+    fontFamily: "Onest_600SemiBold",
+    fontSize: 10,
+    color: "#8e8e93",
+    textTransform: "uppercase",
+  },
+
+  descargarCorteBtn: {
+    backgroundColor: ACCENT,
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    alignItems: "center",
+  },
+
+  descargarCorteBtnDisabled: {
+    opacity: 0.6,
+  },
+
+  descargarCorteBtnText: {
+    fontFamily: "Onest_700Bold",
+    fontSize: 15,
+    color: "#fff",
+  },
 });

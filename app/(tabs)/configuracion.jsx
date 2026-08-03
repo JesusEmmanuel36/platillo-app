@@ -788,94 +788,90 @@ export default function ConfiguracionScreen() {
           />
         </View>
 
-        {false && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>WhatsApp Business</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>WhatsApp Business</Text>
 
-            <View style={styles.whatsappHeaderRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.switchLabel}>
-                  {whatsappConnected
-                    ? "WhatsApp conectado"
-                    : "Conecta tu WhatsApp"}
-                </Text>
+          <View style={styles.whatsappHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.switchLabel}>
+                {whatsappConnected
+                  ? "WhatsApp conectado"
+                  : "Conecta tu WhatsApp"}
+              </Text>
 
-                <Text style={styles.fieldHint}>
-                  {whatsappConnected
-                    ? "Platillo puede enviar automáticamente el enlace de tu menú cuando un cliente te escriba."
-                    : "Conecta tu WhatsApp Business para enviar tu menú automáticamente cuando te escriban."}
-                </Text>
-              </View>
+              <Text style={styles.fieldHint}>
+                {whatsappConnected
+                  ? "Platillo puede enviar automáticamente el enlace de tu menú cuando un cliente te escriba."
+                  : "Conecta tu WhatsApp Business para enviar tu menú automáticamente cuando te escriban."}
+              </Text>
+            </View>
 
-              <View
+            <View
+              style={[
+                styles.whatsappStatusBadge,
+                whatsappConnected
+                  ? styles.whatsappStatusConnected
+                  : styles.whatsappStatusDisconnected,
+              ]}
+            >
+              <Text
                 style={[
-                  styles.whatsappStatusBadge,
+                  styles.whatsappStatusText,
                   whatsappConnected
-                    ? styles.whatsappStatusConnected
-                    : styles.whatsappStatusDisconnected,
+                    ? styles.whatsappStatusTextConnected
+                    : styles.whatsappStatusTextDisconnected,
                 ]}
               >
-                <Text
-                  style={[
-                    styles.whatsappStatusText,
-                    whatsappConnected
-                      ? styles.whatsappStatusTextConnected
-                      : styles.whatsappStatusTextDisconnected,
-                  ]}
-                >
-                  {whatsappConnected ? "Activo" : "Pendiente"}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.whatsappInfoBox}>
-              <View style={styles.whatsappInfoRow}>
-                <Text style={styles.whatsappInfoLabel}>Número</Text>
-                <Text style={styles.whatsappInfoValue}>
-                  {whatsappDisplayPhone}
-                </Text>
-              </View>
-
-              <View style={styles.whatsappInfoRow}>
-                <Text style={styles.whatsappInfoLabel}>Modo</Text>
-                <Text style={styles.whatsappInfoValue}>
-                  {whatsappModeLabel}
-                </Text>
-              </View>
-
-              {whatsapp.phoneNumberId ? (
-                <View style={styles.whatsappInfoRow}>
-                  <Text style={styles.whatsappInfoLabel}>ID del número</Text>
-                  <Text style={styles.whatsappInfoValueSmall}>
-                    {whatsapp.phoneNumberId}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.whatsappConnectBtn,
-                connectingWhatsapp && { opacity: 0.6 },
-              ]}
-              onPress={abrirConexionWhatsapp}
-              disabled={connectingWhatsapp}
-            >
-              <Text style={styles.whatsappConnectText}>
-                {connectingWhatsapp
-                  ? "Generando enlace..."
-                  : whatsappConnected
-                    ? "Administrar WhatsApp Business"
-                    : "Conectar WhatsApp Business"}
+                {whatsappConnected ? "Activo" : "Pendiente"}
               </Text>
-            </TouchableOpacity>
-
-            <Text style={styles.fieldHint}>
-              El número puede seguir usándose en WhatsApp Business si la
-              conexión se hace mediante el flujo de coexistencia.
-            </Text>
+            </View>
           </View>
-        )}
+
+          <View style={styles.whatsappInfoBox}>
+            <View style={styles.whatsappInfoRow}>
+              <Text style={styles.whatsappInfoLabel}>Número</Text>
+              <Text style={styles.whatsappInfoValue}>
+                {whatsappDisplayPhone}
+              </Text>
+            </View>
+
+            <View style={styles.whatsappInfoRow}>
+              <Text style={styles.whatsappInfoLabel}>Modo</Text>
+              <Text style={styles.whatsappInfoValue}>{whatsappModeLabel}</Text>
+            </View>
+
+            {whatsapp.phoneNumberId ? (
+              <View style={styles.whatsappInfoRow}>
+                <Text style={styles.whatsappInfoLabel}>ID del número</Text>
+                <Text style={styles.whatsappInfoValueSmall}>
+                  {whatsapp.phoneNumberId}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.whatsappConnectBtn,
+              connectingWhatsapp && { opacity: 0.6 },
+            ]}
+            onPress={abrirConexionWhatsapp}
+            disabled={connectingWhatsapp}
+          >
+            <Text style={styles.whatsappConnectText}>
+              {connectingWhatsapp
+                ? "Generando enlace..."
+                : whatsappConnected
+                  ? "Administrar WhatsApp Business"
+                  : "Conectar WhatsApp Business"}
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={styles.fieldHint}>
+            El número puede seguir usándose en WhatsApp Business si la conexión
+            se hace mediante el flujo de coexistencia.
+          </Text>
+        </View>
 
         {/* ── Ubicación ── */}
         <View style={styles.section}>
