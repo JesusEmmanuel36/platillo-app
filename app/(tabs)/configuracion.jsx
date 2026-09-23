@@ -2,6 +2,7 @@
 
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
+import * as WebBrowser from "expo-web-browser";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { signOut } from "firebase/auth";
@@ -28,6 +29,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import { auth, db } from "../../firebaseConfig";
 import { uploadToCloudinary } from "../../utils/cloudinary";
+import { panelApi } from "../../lib/panelApi";
 
 const ACCENT = "#e83906";
 const ACCENT_LIGHT = "#fdecea";
@@ -366,10 +368,15 @@ export default function ConfiguracionScreen() {
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
   const [deliveryPrice, setDeliveryPrice] = useState("");
   const [connectingWhatsapp, setConnectingWhatsapp] = useState(false);
+  const [whatsapp, setWhatsapp] = useState({});
+  const [mercadoPago, setMercadoPago] = useState({
+    loading: true,
+    connected: false,
+    mercadoPagoUserId: null,
+  });
+  const [workingMercadoPago, setWorkingMercadoPago] = useState(false);
 
   const router = useRouter();
-
-  const whatsapp = restaurante?.whatsapp || {};
 
   const whatsappConnected =
     whatsapp.enabled === true && !!whatsapp.phoneNumberId;
@@ -440,6 +447,89 @@ export default function ConfiguracionScreen() {
     }
   }
 
+  async function cargarIntegraciones() {
+    try {
+      const [whatsappData, mercadoPagoData] = await Promise.all([
+        panelApi("/api/panel/whatsapp/status"),
+        panelApi("/api/panel/mercado-pago/status"),
+      ]);
+      setWhatsapp(whatsappData.whatsapp || {});
+      setMercadoPago({
+        loading: false,
+        connected: mercadoPagoData.connection?.connected === true,
+        mercadoPagoUserId:
+          mercadoPagoData.connection?.mercadoPagoUserId || null,
+      });
+      if (mercadoPagoData.connection?.connected !== true) setCard(false);
+    } catch {
+      setMercadoPago((current) => ({ ...current, loading: false }));
+    }
+  }
+
+  async function conectarMercadoPago() {
+    try {
+      setWorkingMercadoPago(true);
+      const data = await panelApi("/api/panel/mercado-pago/connect", {
+        method: "POST",
+        body: JSON.stringify({ returnTo: "platilloapp://mercado-pago" }),
+      });
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.authorizationUrl,
+        "platilloapp://mercado-pago",
+      );
+      if (result.type === "success") {
+        const status = new URL(result.url).searchParams.get("status");
+        if (status === "connected") {
+          await cargarIntegraciones();
+          Alert.alert("Mercado Pago conectado", "Ya puedes activar los pagos con tarjeta.");
+        } else {
+          Alert.alert("No se pudo conectar", "Mercado Pago no completó la vinculación.");
+        }
+      }
+    } catch (error) {
+      Alert.alert("No se pudo conectar", error?.message || "Inténtalo nuevamente.");
+    } finally {
+      setWorkingMercadoPago(false);
+    }
+  }
+
+  function desconectarMercadoPago() {
+    Alert.alert(
+      "Desconectar Mercado Pago",
+      "Los clientes dejarán de poder pagar con tarjeta.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Desconectar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setWorkingMercadoPago(true);
+              await panelApi("/api/panel/mercado-pago/status", { method: "DELETE" });
+              setMercadoPago({ loading: false, connected: false, mercadoPagoUserId: null });
+              setCard(false);
+              await updateDoc(doc(db, "restaurants", restaurantId), {
+                "paymentMethods.card": false,
+              });
+            } catch (error) {
+              Alert.alert("No se pudo desconectar", error?.message || "Inténtalo nuevamente.");
+            } finally {
+              setWorkingMercadoPago(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  function cambiarPagoTarjeta(value) {
+    if (value && !mercadoPago.connected) {
+      Alert.alert("Conecta Mercado Pago", "Primero vincula la cuenta que recibirá los pagos.");
+      return;
+    }
+    setCard(value);
+  }
+
   useEffect(() => {
     if (!restaurantId) return;
     const unsubscribe = onSnapshot(
@@ -480,6 +570,37 @@ export default function ConfiguracionScreen() {
       },
     );
     return () => unsubscribe();
+  }, [restaurantId]);
+
+  useEffect(() => {
+    if (!restaurantId) return undefined;
+
+    let active = true;
+    Promise.all([
+      panelApi("/api/panel/whatsapp/status"),
+      panelApi("/api/panel/mercado-pago/status"),
+    ])
+      .then(([whatsappData, mercadoPagoData]) => {
+        if (!active) return;
+        const connected = mercadoPagoData.connection?.connected === true;
+        setWhatsapp(whatsappData.whatsapp || {});
+        setMercadoPago({
+          loading: false,
+          connected,
+          mercadoPagoUserId:
+            mercadoPagoData.connection?.mercadoPagoUserId || null,
+        });
+        if (!connected) setCard(false);
+      })
+      .catch(() => {
+        if (active) {
+          setMercadoPago((current) => ({ ...current, loading: false }));
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, [restaurantId]);
 
   async function cerrarSesion() {
@@ -1001,17 +1122,71 @@ export default function ConfiguracionScreen() {
             />
           </View>
 
-          {false && (
-            <View style={[styles.switchRow, { marginTop: 16 }]}>
-              <Text style={styles.switchLabel}>Tarjeta</Text>
+          <View style={[styles.whatsappInfoBox, { marginTop: 16 }]}>
+            <View style={styles.whatsappHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.switchLabel}>Pago con tarjeta en línea</Text>
+                <Text style={styles.fieldHint}>
+                  {mercadoPago.loading
+                    ? "Comprobando conexión..."
+                    : mercadoPago.connected
+                      ? "Los cobros llegan directamente a tu cuenta de Mercado Pago."
+                      : "Vincula Mercado Pago para recibir pagos con tarjeta."}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.whatsappStatusBadge,
+                  mercadoPago.connected
+                    ? styles.whatsappStatusConnected
+                    : styles.whatsappStatusDisconnected,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.whatsappStatusText,
+                    mercadoPago.connected
+                      ? styles.whatsappStatusTextConnected
+                      : styles.whatsappStatusTextDisconnected,
+                  ]}
+                >
+                  {mercadoPago.connected ? "Conectado" : "Pendiente"}
+                </Text>
+              </View>
+            </View>
+
+            {mercadoPago.mercadoPagoUserId ? (
+              <Text style={[styles.fieldHint, { marginTop: 10 }]}>Cuenta: {mercadoPago.mercadoPagoUserId}</Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.whatsappConnectBtn, workingMercadoPago && { opacity: 0.6 }]}
+              onPress={mercadoPago.connected ? desconectarMercadoPago : conectarMercadoPago}
+              disabled={workingMercadoPago || mercadoPago.loading}
+            >
+              <Text style={styles.whatsappConnectText}>
+                {workingMercadoPago
+                  ? "Procesando..."
+                  : mercadoPago.connected
+                    ? "Desconectar Mercado Pago"
+                    : "Conectar Mercado Pago"}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={[styles.switchRow, { marginTop: 14 }]}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.switchLabel}>Aceptar tarjeta</Text>
+                <Text style={styles.fieldHint}>Muestra este método en el checkout.</Text>
+              </View>
               <Switch
-                value={card}
-                onValueChange={setCard}
+                value={card && mercadoPago.connected}
+                onValueChange={cambiarPagoTarjeta}
+                disabled={!mercadoPago.connected}
                 trackColor={{ false: "#e5e5e5", true: ACCENT_LIGHT }}
-                thumbColor={card ? ACCENT : "#ccc"}
+                thumbColor={card && mercadoPago.connected ? ACCENT : "#ccc"}
               />
             </View>
-          )}
+          </View>
 
           <View style={[styles.switchRow, { marginTop: 16 }]}>
             <Text style={styles.switchLabel}>Transferencia</Text>

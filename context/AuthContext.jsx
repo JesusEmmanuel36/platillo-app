@@ -1,8 +1,8 @@
-import { onAuthStateChanged } from "firebase/auth";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { createContext, useContext, useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { auth, db } from "../firebaseConfig";
+import { auth } from "../firebaseConfig";
+import { panelApi } from "../lib/panelApi";
 
 const AuthContext = createContext(null);
 
@@ -14,16 +14,15 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Usuario logueado — buscar su restaurante
-        const q = query(
-          collection(db, "restaurants"),
-          where("uid", "==", user.uid),
-        );
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          setRestaurantId(snap.docs[0].id);
+        try {
+          const data = await panelApi("/api/panel/session");
+          setRestaurantId(data.session.restaurantId);
+          setUsuario(user);
+        } catch {
+          await signOut(auth).catch(() => {});
+          setUsuario(null);
+          setRestaurantId(null);
         }
-        setUsuario(user);
       } else {
         // No hay sesión — limpiar todo
         setUsuario(null);

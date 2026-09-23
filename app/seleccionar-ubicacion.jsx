@@ -1,7 +1,7 @@
 import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { doc, GeoPoint, updateDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
     StyleSheet,
@@ -27,14 +27,8 @@ export default function SeleccionarUbicacion() {
     longitudeDelta: 0.01,
   });
 
-  useEffect(() => {
-    cargarUbicacionInicial();
-  }, []);
-
-  async function cargarUbicacionInicial() {
+  const cargarUbicacionInicial = useCallback(async () => {
     try {
-      setLoading(true);
-
       if (address?.trim()) {
         const resultados = await Location.geocodeAsync(address);
 
@@ -68,7 +62,11 @@ export default function SeleccionarUbicacion() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [address]);
+
+  useEffect(() => {
+    Promise.resolve().then(cargarUbicacionInicial);
+  }, [cargarUbicacionInicial]);
 
   async function confirmar() {
     try {

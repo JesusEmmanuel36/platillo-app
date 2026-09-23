@@ -1,12 +1,11 @@
 // INDEX.JSX
 
-import { Audio } from "expo-av";
+import { useAudioPlayer } from "expo-audio";
 import * as Notifications from "expo-notifications";
 import {
   collection,
   doc,
   onSnapshot,
-  orderBy,
   query,
   updateDoc,
   where,
@@ -28,6 +27,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import { auth, db } from "../../firebaseConfig";
+import { panelApi } from "../../lib/panelApi";
+import ManualSaleModal from "../../components/ManualSaleModal";
 
 const ACCENT = "#e83906";
 const ACCENT_LIGHT = "#fdecea";
@@ -53,6 +54,7 @@ if (Platform.OS === "android") {
 // ────────────────────────────────────────────────────────────────────────────
 
 const statusConfig = {
+  procesando: { label: "Por aceptar", bg: "#fdecea", color: ACCENT },
   preparando: { label: "Preparando", bg: "#ffecce", color: "#ff9d00" },
   listo: { label: "Listo", bg: "#ceffd2", color: "#2e7d32" },
   en_camino: { label: "Listo", bg: "#ceffd2", color: "#2e7d32" },
@@ -241,31 +243,44 @@ function DetallePedido({ pedido, onClose }) {
     try {
       setLoading(true);
 
-      await updateDoc(doc(db, "orders", pedido.id), {
-        status: "cancelado",
-        razonCancelacion: razonSeleccionada,
+      await panelApi(`/api/panel/orders/${encodeURIComponent(pedido.id)}/decision`, {
+        method: "POST",
+        body: JSON.stringify({ action: "cancel", reason: razonSeleccionada }),
       });
 
       await enviarWhatsApp("pedido-cancelado", {
         orderId: pedido.id,
         razonCancelacion: razonSeleccionada,
-      });
+      }).catch(() => null);
 
       Alert.alert(
-        "Mensaje enviado",
-        "La actualización del pedido se envió por WhatsApp.",
+        "Pedido cancelado",
+        pedido.pago?.metodo === "tarjeta"
+          ? "El pedido se canceló y el reembolso fue solicitado."
+          : "El pedido se canceló correctamente.",
       );
 
       setModalCancelar(false);
       onClose();
     } catch (e) {
       console.log(e);
-      Alert.alert(
-        "Pedido cancelado",
-        "El pedido se canceló, pero no se pudo enviar WhatsApp.",
-      );
-      setModalCancelar(false);
+      Alert.alert("No se pudo cancelar", e?.message || "Inténtalo nuevamente.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAceptar() {
+    try {
+      setLoading(true);
+      await panelApi(`/api/panel/orders/${encodeURIComponent(pedido.id)}/decision`, {
+        method: "POST",
+        body: JSON.stringify({ action: "accept" }),
+      });
+      Alert.alert("Pedido aceptado", "El pedido ya está en preparación.");
       onClose();
+    } catch (e) {
+      Alert.alert("No se pudo aceptar", e?.message || "Inténtalo nuevamente.");
     } finally {
       setLoading(false);
     }
@@ -421,6 +436,27 @@ function DetallePedido({ pedido, onClose }) {
                 <Text style={styles.totalAmount}>${pedido.total}</Text>
               </View>
 
+              {pedido.status === "procesando" && (
+                <>
+                  <TouchableOpacity
+                    style={[styles.accionBtn, loading && { opacity: 0.6 }]}
+                    onPress={handleAceptar}
+                    disabled={loading}
+                  >
+                    <Text style={styles.accionBtnText}>
+                      {loading ? "Procesando..." : "Aceptar pedido"}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.accionBtn, { marginTop: -22, backgroundColor: "#000" }]}
+                    onPress={() => setModalCancelar(true)}
+                    disabled={loading}
+                  >
+                    <Text style={styles.accionBtnText}>Cancelar y reembolsar</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
               {pedido.status === "preparando" && (
                 <>
                   <TouchableOpacity
@@ -464,12 +500,16 @@ function InfoRow({ label, value }) {
 }
 
 export default function PedidosScreen() {
-  const { restaurantId } = useAuth();
+  const { restaurantId, usuario } = useAuth();
   const [pedidos, setPedidos] = useState([]);
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState(null);
+  const [manualSaleOpen, setManualSaleOpen] = useState(false);
   const pedidosIdsRef = useRef(null); // null = primera carga
-  const sonidoRef = useRef(null);
+  const sonidoNuevoPedido = useAudioPlayer(
+    require("../../assets/sounds/nuevo-pedido.mp3"),
+  );
 
+  const porAceptar = pedidos.filter((p) => p.status === "procesando");
   const enCurso = pedidos.filter((p) => p.status === "preparando");
   const listos = pedidos.filter(
     (p) => p.status === "listo" || p.status === "en_camino",
@@ -495,8 +535,9 @@ export default function PedidosScreen() {
       const token = tokenData.data;
 
       if (token && restaurantId) {
-        await updateDoc(doc(db, "restaurants", restaurantId), {
-          expoPushToken: token,
+        await panelApi("/api/panel/push-token", {
+          method: "POST",
+          body: JSON.stringify({ token }),
         });
       }
     }
@@ -505,63 +546,71 @@ export default function PedidosScreen() {
 
   async function reproducirSonido() {
     try {
-      if (sonidoRef.current) {
-        await sonidoRef.current.unloadAsync();
-      }
-      const { sound } = await Audio.Sound.createAsync(
-        require("../../assets/sounds/nuevo-pedido.mp3"),
-      );
-      sonidoRef.current = sound;
-      await sound.playAsync();
+      await sonidoNuevoPedido.seekTo(0);
+      sonidoNuevoPedido.play();
     } catch (e) {
       console.log("Error reproduciendo sonido:", e);
     }
   }
 
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!restaurantId || !usuario?.uid) return;
 
     const q = query(
       collection(db, "orders"),
-      where("restaurantId", "==", restaurantId),
-      orderBy("creadoEn", "desc"),
+      where("restaurantUid", "==", usuario.uid),
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const data = snapshot.docs
+          .map((document) => ({
+            id: document.id,
+            ...document.data(),
+          }))
+          .filter((pedido) => pedido.restaurantId === restaurantId)
+          .sort(
+            (a, b) =>
+              (b.creadoEn?.toMillis?.() || 0) -
+              (a.creadoEn?.toMillis?.() || 0),
+          );
 
-      // Primera carga: solo guarda IDs, no notifica
-      if (pedidosIdsRef.current === null) {
+        // Primera carga: solo guarda IDs, no notifica
+        if (pedidosIdsRef.current === null) {
+          pedidosIdsRef.current = new Set(data.map((p) => p.id));
+          setPedidos(data);
+          return;
+        }
+
+        const nuevos = data.filter((p) => !pedidosIdsRef.current.has(p.id));
+
+        if (nuevos.length > 0) {
+          reproducirSonido();
+
+          Notifications.scheduleNotificationAsync({
+            content: {
+              title: "🍽️ Nuevo pedido",
+              body: `${nuevos[0].cliente.nombre} · $${nuevos[0].total}`,
+            },
+            trigger: null,
+          });
+        }
+
         pedidosIdsRef.current = new Set(data.map((p) => p.id));
         setPedidos(data);
-        return;
-      }
-
-      // Detectar pedidos nuevos
-      const nuevos = data.filter((p) => !pedidosIdsRef.current.has(p.id));
-
-      if (nuevos.length > 0) {
-        reproducirSonido();
-
-        Notifications.scheduleNotificationAsync({
-          content: {
-            title: "🍽️ Nuevo pedido",
-            body: `${nuevos[0].cliente.nombre} · $${nuevos[0].total}`,
-          },
-          trigger: null, // inmediato
-        });
-      }
-
-      // Actualizar set de IDs conocidos
-      pedidosIdsRef.current = new Set(data.map((p) => p.id));
-      setPedidos(data);
-    });
+      },
+      (error) => {
+        console.error("No se pudieron consultar los pedidos:", error.code);
+        Alert.alert(
+          "No se pudieron cargar los pedidos",
+          "Revisa la conexión e inténtalo nuevamente.",
+        );
+      },
+    );
 
     return () => unsubscribe();
-  }, [restaurantId]);
+  }, [restaurantId, usuario?.uid]);
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -572,36 +621,44 @@ export default function PedidosScreen() {
         <Text style={styles.headerTitle}>Pedidos</Text>
         <View style={styles.headerRight}>
           <View style={styles.headerBadge}>
-            <Text style={styles.headerBadgeText}>{enCurso.length} activos</Text>
+            <Text style={styles.headerBadgeText}>
+              {porAceptar.length + enCurso.length} activos
+            </Text>
           </View>
         </View>
       </View>
 
-      {/* Lista vacía */}
-      {pedidos.length === 0 && (
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>No hay pedidos por el momento</Text>
-        </View>
-      )}
-
       {/* Lista */}
       <FlatList
-        data={[...enCurso, ...listos, ...cancelados]}
+        data={[...porAceptar, ...enCurso, ...listos, ...cancelados]}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.lista}
         ListHeaderComponent={
-          enCurso.length > 0 ? (
-            <Text style={styles.sectionLabel}>En curso</Text>
-          ) : null
+          <View>
+            <TouchableOpacity
+              style={styles.manualSaleBtn}
+              onPress={() => setManualSaleOpen(true)}
+            >
+              <Text style={styles.manualSaleBtnText}>+ Registrar venta manual</Text>
+            </TouchableOpacity>
+            {porAceptar.length + enCurso.length > 0 ? (
+              <Text style={styles.sectionLabel}>Activos</Text>
+            ) : null}
+          </View>
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyList}>
+            <Text style={styles.emptyText}>No hay pedidos por el momento</Text>
+          </View>
         }
         renderItem={({ item, index }) => (
           <>
-            {index === enCurso.length && listos.length > 0 && (
+            {index === porAceptar.length + enCurso.length && listos.length > 0 && (
               <Text style={[styles.sectionLabel, { marginTop: 8 }]}>
                 Listos
               </Text>
             )}
-            {index === enCurso.length + listos.length &&
+            {index === porAceptar.length + enCurso.length + listos.length &&
               cancelados.length > 0 && (
                 <Text style={[styles.sectionLabel, { marginTop: 8 }]}>
                   Cancelados
@@ -621,6 +678,11 @@ export default function PedidosScreen() {
           onClose={() => setPedidoSeleccionado(null)}
         />
       )}
+      <ManualSaleModal
+        visible={manualSaleOpen}
+        onClose={() => setManualSaleOpen(false)}
+        restaurantId={restaurantId}
+      />
     </SafeAreaView>
   );
 }
@@ -670,6 +732,19 @@ const styles = StyleSheet.create({
     color: "#8e8e93",
   },
   lista: { padding: 12 },
+  manualSaleBtn: {
+    backgroundColor: ACCENT,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  manualSaleBtnText: {
+    color: "#fff",
+    fontFamily: "Onest_700Bold",
+    fontSize: 14,
+  },
+  emptyList: { alignItems: "center", paddingVertical: 56 },
   sectionLabel: {
     fontSize: 11,
     fontFamily: "Onest_700Bold",

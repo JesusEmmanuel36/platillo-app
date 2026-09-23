@@ -4,7 +4,6 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import {
-  addDoc,
   collection,
   onSnapshot,
   orderBy,
@@ -19,11 +18,11 @@ import {
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Circle, Path } from "react-native-svg";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebaseConfig";
 
@@ -201,111 +200,92 @@ function BarraHorizontal({ nombre, cantidad, max }) {
   );
 }
 
-function ModalVentaManual({ visible, onClose, restaurantId }) {
-  const [monto, setMonto] = useState("");
-  const [metodo, setMetodo] = useState("efectivo");
-  const [nota, setNota] = useState("");
-  const [loading, setLoading] = useState(false);
+function puntoPolar(center, radius, angle) {
+  const radians = ((angle - 90) * Math.PI) / 180;
+  return {
+    x: center + radius * Math.cos(radians),
+    y: center + radius * Math.sin(radians),
+  };
+}
 
-  async function guardar() {
-    const total = parseFloat(monto);
-    if (!total || total <= 0) {
-      Alert.alert("Error", "Ingresa un monto válido");
-      return;
-    }
-    try {
-      setLoading(true);
-      await addDoc(collection(db, "manual_sales"), {
-        restaurantId,
-        total,
-        metodo,
-        nota: nota.trim(),
-        creadoEn: new Date(),
-      });
-      setMonto("");
-      setNota("");
-      setMetodo("efectivo");
-      onClose();
-    } catch (e) {
-      Alert.alert("Error", "No se pudo registrar la venta");
-    } finally {
-      setLoading(false);
-    }
+function GraficaPastel({ datos, mensajeVacio }) {
+  const total = datos.reduce((sum, item) => sum + item.valor, 0);
+  const activos = datos.filter((item) => item.valor > 0);
+
+  if (total <= 0) {
+    return (
+      <View style={styles.pieEmpty}>
+        <Text style={styles.pieEmptyText}>{mensajeVacio}</Text>
+      </View>
+    );
   }
 
+  const center = 90;
+  const outerRadius = 78;
+  const innerRadius = 51;
+  const { slices } = activos.reduce((state, item) => {
+    const percentage = item.valor / total;
+    const startAngle = state.angle;
+    const endAngle = state.angle + percentage * 360;
+    const outerStart = puntoPolar(center, outerRadius, startAngle);
+    const outerEnd = puntoPolar(center, outerRadius, endAngle);
+    const innerStart = puntoPolar(center, innerRadius, endAngle);
+    const innerEnd = puntoPolar(center, innerRadius, startAngle);
+    const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+    const path = [
+      `M ${outerStart.x} ${outerStart.y}`,
+      `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
+      `L ${innerStart.x} ${innerStart.y}`,
+      `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerEnd.x} ${innerEnd.y}`,
+      "Z",
+    ].join(" ");
+    return {
+      angle: endAngle,
+      slices: [...state.slices, { ...item, percentage, path }],
+    };
+  }, { angle: 0, slices: [] });
+
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-    >
-      <View style={styles.overlay}>
-        <View style={styles.modal}>
-          <View style={styles.modalHandle} />
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Registrar venta manual</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={{ padding: 20 }}>
-            <Text style={styles.fieldLabel}>Monto ($)</Text>
-            <TextInput
-              style={styles.input}
-              value={monto}
-              onChangeText={setMonto}
-              placeholder="0.00"
-              placeholderTextColor="#bbb"
-              keyboardType="numeric"
+    <View style={styles.pieWrap}>
+      <View style={styles.pieGraphic}>
+        <Svg width={180} height={180} viewBox="0 0 180 180">
+          {slices.length === 1 ? (
+            <Circle
+              cx={center}
+              cy={center}
+              r={(outerRadius + innerRadius) / 2}
+              fill="none"
+              stroke={slices[0].color}
+              strokeWidth={outerRadius - innerRadius}
             />
-
-            <Text style={styles.fieldLabel}>Método de pago</Text>
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
-              {METODOS.map((m) => (
-                <TouchableOpacity
-                  key={m}
-                  style={[
-                    styles.chipBtn,
-                    metodo === m && styles.chipBtnSelected,
-                  ]}
-                  onPress={() => setMetodo(m)}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      metodo === m && styles.chipTextSelected,
-                    ]}
-                  >
-                    {METODOS_LABEL[m]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.fieldLabel}>Nota (opcional)</Text>
-            <TextInput
-              style={styles.input}
-              value={nota}
-              onChangeText={setNota}
-              placeholder="Ej. 2 tacos + refresco"
-              placeholderTextColor="#bbb"
-            />
-
-            <TouchableOpacity
-              style={[styles.accionBtn, loading && { opacity: 0.6 }]}
-              onPress={guardar}
-              disabled={loading}
-            >
-              <Text style={styles.accionBtnText}>
-                {loading ? "Guardando..." : "Registrar"}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          ) : (
+            slices.map((slice) => (
+              <Path key={slice.label} d={slice.path} fill={slice.color} />
+            ))
+          )}
+        </Svg>
+        <View pointerEvents="none" style={styles.pieCenter}>
+          <Text style={styles.pieCenterLabel}>TOTAL</Text>
+          <Text style={styles.pieCenterValue}>${Math.round(total)}</Text>
         </View>
       </View>
-    </Modal>
+
+      <View style={styles.pieLegend}>
+        {slices.map((slice) => (
+          <View key={slice.label} style={styles.pieLegendRow}>
+            <View style={styles.pieLegendName}>
+              <View style={[styles.pieDot, { backgroundColor: slice.color }]} />
+              <Text style={styles.pieLegendLabel} numberOfLines={1}>
+                {slice.label}
+              </Text>
+            </View>
+            <Text style={styles.pieLegendValue}>
+              {Math.round(slice.percentage * 100)}% · ${Math.round(slice.valor)}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -814,24 +794,32 @@ function ModalCorte({
 }
 
 export default function AnaliticasScreen() {
-  const { restaurantId } = useAuth();
+  const { restaurantId, usuario } = useAuth();
   const [filtro, setFiltro] = useState("Hoy");
   const [pedidos, setPedidos] = useState([]);
   const [manuales, setManuales] = useState([]);
-  const [modalManual, setModalManual] = useState(false);
   const [modalCorte, setModalCorte] = useState(false);
 
   useEffect(() => {
-    if (!restaurantId) return;
+    if (!restaurantId || !usuario?.uid) return;
 
     const q = query(
       collection(db, "orders"),
-      where("restaurantId", "==", restaurantId),
-      orderBy("creadoEn", "desc"),
+      where("restaurantUid", "==", usuario.uid),
     );
-    const unsub1 = onSnapshot(q, (snap) => {
-      setPedidos(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
+    const unsub1 = onSnapshot(
+      q,
+      (snap) => {
+        setPedidos(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((pedido) => pedido.restaurantId === restaurantId),
+        );
+      },
+      (error) => {
+        console.error("No se pudieron consultar los pedidos:", error.code);
+      },
+    );
 
     const q2 = query(
       collection(db, "manual_sales"),
@@ -846,20 +834,26 @@ export default function AnaliticasScreen() {
       unsub1();
       unsub2();
     };
-  }, [restaurantId]);
+  }, [restaurantId, usuario?.uid]);
 
-  const pedidosFiltrados = filtrarPorRango(pedidos, filtro);
+  const pedidosContabilizables = pedidos.filter(
+    (pedido) => !["procesando", "cancelado"].includes(pedido.status),
+  );
+  const pedidosFiltrados = filtrarPorRango(pedidosContabilizables, filtro);
   const manualesFiltrados = filtrarPorRango(manuales, filtro);
   const todosFiltrados = [...pedidosFiltrados, ...manualesFiltrados];
 
-  const totalVentas = todosFiltrados.reduce((a, p) => a + (p.total || 0), 0);
+  const totalVentas = todosFiltrados.reduce(
+    (a, p) => a + (Number(p.total) || 0),
+    0,
+  );
   const totalPedidos = todosFiltrados.length;
   const ticketPromedio = totalPedidos > 0 ? totalVentas / totalPedidos : 0;
 
   // Hoy para el corte
   const hoyInicio = new Date();
   hoyInicio.setHours(0, 0, 0, 0);
-  const pedidosHoy = pedidos.filter((p) => {
+  const pedidosHoy = pedidosContabilizables.filter((p) => {
     const f = parsearFecha(p.creadoEn);
     return f && f >= hoyInicio;
   });
@@ -876,9 +870,7 @@ export default function AnaliticasScreen() {
   const datosDias =
     filtro !== "Hoy" && filtro !== "Todo"
       ? agruparPorDia(todosFiltrados, filtro)
-      : filtro === "Hoy"
-        ? agruparPorDia(todosFiltrados, "Hoy")
-        : [];
+      : [];
 
   // Horas pico
   const datosHoras = agruparPorHora(pedidosFiltrados);
@@ -900,6 +892,34 @@ export default function AnaliticasScreen() {
     .slice(0, 5)
     .map(([nombre, cantidad]) => ({ nombre, cantidad }));
   const maxTop = topProductos[0]?.cantidad || 1;
+
+  const totalesEntrega = { domicilio: 0, local: 0, manual: 0 };
+  pedidosFiltrados.forEach((pedido) => {
+    const tipo =
+      pedido.entrega?.tipo === "domicilio" ? "domicilio" : "local";
+    totalesEntrega[tipo] += Number(pedido.total) || 0;
+  });
+  manualesFiltrados.forEach((venta) => {
+    totalesEntrega.manual += Number(venta.total) || 0;
+  });
+  const ventasPorEntrega = [
+    { label: "Domicilio", valor: totalesEntrega.domicilio, color: ACCENT },
+    { label: "Recoge en local", valor: totalesEntrega.local, color: "#f6a35c" },
+    { label: "Venta manual", valor: totalesEntrega.manual, color: "#8e8e93" },
+  ];
+
+  const totalesPago = { efectivo: 0, tarjeta: 0, transferencia: 0 };
+  todosFiltrados.forEach((movimiento) => {
+    const metodo = movimiento.pago?.metodo || movimiento.metodo;
+    if (totalesPago[metodo] !== undefined) {
+      totalesPago[metodo] += Number(movimiento.total) || 0;
+    }
+  });
+  const ventasPorPago = [
+    { label: "Efectivo", valor: totalesPago.efectivo, color: ACCENT },
+    { label: "Tarjeta", valor: totalesPago.tarjeta, color: "#f6a35c" },
+    { label: "Transferencia", valor: totalesPago.transferencia, color: "#8e8e93" },
+  ];
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -941,7 +961,7 @@ export default function AnaliticasScreen() {
           </View>
           <View style={styles.tarjeta}>
             <Text style={styles.tarjetaValor}>{totalPedidos}</Text>
-            <Text style={styles.tarjetaLabel}>Pedidos</Text>
+            <Text style={styles.tarjetaLabel}>Movimientos</Text>
           </View>
           <View style={styles.tarjeta}>
             <Text style={styles.tarjetaValor}>
@@ -965,6 +985,30 @@ export default function AnaliticasScreen() {
             <GraficaBarras datos={datosDias} labelKey="dia" valueKey="total" />
           </View>
         )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionEyebrow}>CANALES</Text>
+          <Text style={styles.chartTitle}>Ventas por tipo de entrega</Text>
+          <Text style={styles.chartDescription}>
+            Domicilio, recoge en local y ventas manuales.
+          </Text>
+          <GraficaPastel
+            datos={ventasPorEntrega}
+            mensajeVacio="Todavía no hay ventas en este periodo."
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionEyebrow}>COBRO</Text>
+          <Text style={styles.chartTitle}>Ventas por método de pago</Text>
+          <Text style={styles.chartDescription}>
+            Efectivo, tarjeta y transferencia.
+          </Text>
+          <GraficaPastel
+            datos={ventasPorPago}
+            mensajeVacio="Todavía no hay ventas en este periodo."
+          />
+        </View>
 
         {/* ── Top productos ── */}
         {topProductos.length > 0 && (
@@ -1010,22 +1054,8 @@ export default function AnaliticasScreen() {
           <Text style={styles.corteChevron}>→</Text>
         </TouchableOpacity>
 
-        {/* ── Venta manual ── */}
-        <TouchableOpacity
-          style={styles.accionBtn}
-          onPress={() => setModalManual(true)}
-        >
-          <Text style={styles.accionBtnText}>+ Registrar venta manual</Text>
-        </TouchableOpacity>
-
         <View style={{ height: 40 }} />
       </ScrollView>
-
-      <ModalVentaManual
-        visible={modalManual}
-        onClose={() => setModalManual(false)}
-        restaurantId={restaurantId}
-      />
 
       <ModalCorte
         visible={modalCorte}
@@ -1067,6 +1097,89 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginBottom: 12,
+  },
+  sectionEyebrow: {
+    fontFamily: "Onest_800ExtraBold",
+    fontSize: 10,
+    color: ACCENT,
+    letterSpacing: 1.2,
+    marginBottom: 5,
+  },
+  chartTitle: {
+    fontFamily: "Onest_800ExtraBold",
+    fontSize: 18,
+    color: "#151515",
+    marginBottom: 4,
+  },
+  chartDescription: {
+    fontFamily: "Onest_400Regular",
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#8e8e93",
+    marginBottom: 18,
+  },
+  pieWrap: { alignItems: "center", gap: 18 },
+  pieGraphic: { width: 180, height: 180, position: "relative" },
+  pieCenter: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pieCenterLabel: {
+    fontFamily: "Onest_700Bold",
+    fontSize: 9,
+    letterSpacing: 1,
+    color: "#9a9a9a",
+    marginBottom: 3,
+  },
+  pieCenterValue: {
+    fontFamily: "Onest_800ExtraBold",
+    fontSize: 18,
+    color: "#171717",
+  },
+  pieLegend: { width: "100%", gap: 11 },
+  pieLegendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  pieLegendName: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  pieDot: { width: 10, height: 10, borderRadius: 5 },
+  pieLegendLabel: {
+    flex: 1,
+    fontFamily: "Onest_600SemiBold",
+    fontSize: 13,
+    color: "#777",
+  },
+  pieLegendValue: {
+    fontFamily: "Onest_700Bold",
+    fontSize: 13,
+    color: "#171717",
+  },
+  pieEmpty: {
+    minHeight: 180,
+    borderRadius: 14,
+    backgroundColor: "#f6f6f6",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  pieEmptyText: {
+    fontFamily: "Onest_500Medium",
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+    color: "#8e8e93",
   },
   fieldLabel: {
     fontFamily: "Onest_600SemiBold",

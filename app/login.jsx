@@ -1,6 +1,5 @@
 import { router } from "expo-router";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { collection, getDocs, query, where } from "firebase/firestore";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -13,7 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { auth, db } from "../firebaseConfig";
+import { auth } from "../firebaseConfig";
+import { panelApi } from "../lib/panelApi";
 
 const ACCENT = "#e83906";
 
@@ -32,24 +32,12 @@ export default function LoginScreen() {
     setError("");
     try {
       // 1. Login con Firebase Auth
-      const resultado = await signInWithEmailAndPassword(auth, email, password);
-      const uid = resultado.user.uid;
-
-      // 2. Buscar el restaurante que tenga ese uid
-      const q = query(collection(db, "restaurants"), where("uid", "==", uid));
-      const snap = await getDocs(q);
-
-      // 3. Si no existe restaurante asociado, rechazar
-      if (snap.empty) {
-        setError("No se encontró un restaurante asociado a esta cuenta");
-        await signOut(auth); // cerrar sesión si no tiene restaurante
-        return;
-      }
-
-      // 4. Login exitoso — el AuthContext ya se encarga del restaurantId
+      await signInWithEmailAndPassword(auth, email, password);
+      await panelApi("/api/panel/session");
       router.replace("/(tabs)");
     } catch (e) {
-      setError("Email o contraseña incorrectos");
+      await signOut(auth).catch(() => {});
+      setError(e?.message || "Email o contraseña incorrectos");
     } finally {
       setLoading(false);
     }
