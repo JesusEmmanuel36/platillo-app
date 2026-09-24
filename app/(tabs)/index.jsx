@@ -44,10 +44,11 @@ Notifications.setNotificationHandler({
 });
 
 if (Platform.OS === "android") {
-  Notifications.setNotificationChannelAsync("pedidos", {
+  Notifications.setNotificationChannelAsync("pedidos-voz", {
     name: "Pedidos",
     importance: Notifications.AndroidImportance.MAX,
-    sound: true,
+    sound: "nuevo_pedido.mp3",
+    vibrationPattern: [0, 250, 250, 250],
   });
 }
 
@@ -506,7 +507,7 @@ export default function PedidosScreen() {
   const [manualSaleOpen, setManualSaleOpen] = useState(false);
   const pedidosIdsRef = useRef(null); // null = primera carga
   const sonidoNuevoPedido = useAudioPlayer(
-    require("../../assets/sounds/nuevo-pedido.mp3"),
+    require("../../assets/sounds/nuevo_pedido.mp3"),
   );
 
   const porAceptar = pedidos.filter((p) => p.status === "procesando");
@@ -587,14 +588,6 @@ export default function PedidosScreen() {
 
         if (nuevos.length > 0) {
           reproducirSonido();
-
-          Notifications.scheduleNotificationAsync({
-            content: {
-              title: "🍽️ Nuevo pedido",
-              body: `${nuevos[0].cliente.nombre} · $${nuevos[0].total}`,
-            },
-            trigger: null,
-          });
         }
 
         pedidosIdsRef.current = new Set(data.map((p) => p.id));

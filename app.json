@@ -43,7 +43,14 @@
       "expo-status-bar",
       "expo-web-browser",
       "expo-audio",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-notifications",
+        {
+          "sounds": ["./assets/sounds/nuevo_pedido.mp3"],
+          "defaultChannel": "pedidos-voz"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

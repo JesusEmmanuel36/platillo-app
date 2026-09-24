@@ -367,6 +367,7 @@ export default function ConfiguracionScreen() {
   const [hexInput, setHexInput] = useState("#e83906");
   const [deliveryEnabled, setDeliveryEnabled] = useState(false);
   const [deliveryPrice, setDeliveryPrice] = useState("");
+  const [autoAcceptOrders, setAutoAcceptOrders] = useState(false);
   const [connectingWhatsapp, setConnectingWhatsapp] = useState(false);
   const [whatsapp, setWhatsapp] = useState({});
   const [mercadoPago, setMercadoPago] = useState({
@@ -449,9 +450,10 @@ export default function ConfiguracionScreen() {
 
   async function cargarIntegraciones() {
     try {
-      const [whatsappData, mercadoPagoData] = await Promise.all([
+      const [whatsappData, mercadoPagoData, orderSettingsData] = await Promise.all([
         panelApi("/api/panel/whatsapp/status"),
         panelApi("/api/panel/mercado-pago/status"),
+        panelApi("/api/panel/order-settings"),
       ]);
       setWhatsapp(whatsappData.whatsapp || {});
       setMercadoPago({
@@ -461,6 +463,7 @@ export default function ConfiguracionScreen() {
           mercadoPagoData.connection?.mercadoPagoUserId || null,
       });
       if (mercadoPagoData.connection?.connected !== true) setCard(false);
+      setAutoAcceptOrders(orderSettingsData.settings?.autoAccept === true);
     } catch {
       setMercadoPago((current) => ({ ...current, loading: false }));
     }
@@ -579,8 +582,9 @@ export default function ConfiguracionScreen() {
     Promise.all([
       panelApi("/api/panel/whatsapp/status"),
       panelApi("/api/panel/mercado-pago/status"),
+      panelApi("/api/panel/order-settings"),
     ])
-      .then(([whatsappData, mercadoPagoData]) => {
+      .then(([whatsappData, mercadoPagoData, orderSettingsData]) => {
         if (!active) return;
         const connected = mercadoPagoData.connection?.connected === true;
         setWhatsapp(whatsappData.whatsapp || {});
@@ -591,6 +595,7 @@ export default function ConfiguracionScreen() {
             mercadoPagoData.connection?.mercadoPagoUserId || null,
         });
         if (!connected) setCard(false);
+        setAutoAcceptOrders(orderSettingsData.settings?.autoAccept === true);
       })
       .catch(() => {
         if (active) {
@@ -699,6 +704,10 @@ export default function ConfiguracionScreen() {
         light_accent: generarLightAccent(accentColor),
         delivery_enabled: deliveryEnabled,
         delivery_price: deliveryEnabled ? parseFloat(deliveryPrice) || 0 : 0,
+      });
+      await panelApi("/api/panel/order-settings", {
+        method: "PUT",
+        body: JSON.stringify({ autoAccept: autoAcceptOrders }),
       });
       Alert.alert("Guardado", "Los cambios se guardaron correctamente");
     } catch (e) {
@@ -1025,6 +1034,37 @@ export default function ConfiguracionScreen() {
             clientes puedan encontrar tu negocio correctamente y recibir
             pedidos.
           </Text>
+        </View>
+
+        {/* ── Recepción de pedidos ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recepción de pedidos</Text>
+
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1, paddingRight: 16 }}>
+              <Text style={styles.switchLabel}>
+                Aceptar pedidos automáticamente
+              </Text>
+              <Text style={styles.fieldHint}>
+                {autoAcceptOrders
+                  ? "Los pedidos confirmados pasan directamente a preparación."
+                  : "Debes aceptar o cancelar cada pedido nuevo."}
+              </Text>
+            </View>
+            <Switch
+              value={autoAcceptOrders}
+              onValueChange={setAutoAcceptOrders}
+              trackColor={{ false: "#e5e5e5", true: ACCENT_LIGHT }}
+              thumbColor={autoAcceptOrders ? ACCENT : "#ccc"}
+            />
+          </View>
+
+          {autoAcceptOrders ? (
+            <Text style={[styles.fieldHint, { marginTop: 12 }]}>
+              Todavía puedes cancelar durante la preparación. Los pagos con
+              tarjeta se reembolsarán al cancelar.
+            </Text>
+          ) : null}
         </View>
 
         {/* ── Estado del negocio ── */}
