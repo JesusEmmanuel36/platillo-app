@@ -1,3 +1,4 @@
+import { ModalCloseButton, modalStyles } from "../../components/ModalUI";
 // INDEX.JSX
 
 import { useAudioPlayer } from "expo-audio";
@@ -131,7 +132,9 @@ function PedidoCard({ pedido, onPress }) {
       </Text>
       <View style={styles.cardBottom}>
         {recoge ? (
-          <Text style={styles.cardTipo}>Recoge en local</Text>
+          <Text style={styles.cardTipo}>
+            {pedido.source === "pos" ? "Venta de mostrador" : "Recoge en local"}
+          </Text>
         ) : (
           <Text style={styles.cardTipo}>Envio a domicilio</Text>
         )}
@@ -190,9 +193,6 @@ function DetallePedido({ pedido, onClose }) {
 
     const text = await response.text();
 
-    console.log("STATUS API:", response.status);
-    console.log("RESPUESTA API:", text);
-
     if (!response.ok) {
       throw new Error(text);
     }
@@ -213,13 +213,17 @@ function DetallePedido({ pedido, onClose }) {
         status: nuevoStatus,
       });
 
-      await enviarWhatsApp(endpoint, {
-        orderId: pedido.id,
-      });
+      if (pedido.cliente?.telefono) {
+        await enviarWhatsApp(endpoint, {
+          orderId: pedido.id,
+        });
+      }
 
       Alert.alert(
-        "Mensaje enviado",
-        "La actualización del pedido se envió por WhatsApp.",
+        "Pedido actualizado",
+        pedido.cliente?.telefono
+          ? "La actualización se envió por WhatsApp."
+          : "El pedido se actualizó correctamente.",
       );
 
       onClose();
@@ -249,10 +253,12 @@ function DetallePedido({ pedido, onClose }) {
         body: JSON.stringify({ action: "cancel", reason: razonSeleccionada }),
       });
 
-      await enviarWhatsApp("pedido-cancelado", {
-        orderId: pedido.id,
-        razonCancelacion: razonSeleccionada,
-      }).catch(() => null);
+      if (pedido.cliente?.telefono) {
+        await enviarWhatsApp("pedido-cancelado", {
+          orderId: pedido.id,
+          razonCancelacion: razonSeleccionada,
+        }).catch(() => null);
+      }
 
       Alert.alert(
         "Pedido cancelado",
@@ -287,6 +293,39 @@ function DetallePedido({ pedido, onClose }) {
     }
   }
 
+  function handleEliminar() {
+    if (loading) return;
+
+    Alert.alert(
+      "Eliminar pedido",
+      "Se eliminará definitivamente. Esto no cancela ni reembolsa pagos.",
+      [
+        { text: "Volver", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await panelApi(`/api/panel/orders/${encodeURIComponent(pedido.id)}`, {
+                method: "DELETE",
+              });
+              onClose();
+              Alert.alert("Pedido eliminado", "El pedido se eliminó correctamente.");
+            } catch (error) {
+              Alert.alert(
+                "No se pudo eliminar",
+                error?.message || "Inténtalo nuevamente.",
+              );
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -296,9 +335,7 @@ function DetallePedido({ pedido, onClose }) {
             <Text style={styles.modalTitle}>
               Pedido · {pedido.cliente.nombre}
             </Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>✕</Text>
-            </TouchableOpacity>
+            <ModalCloseButton onPress={onClose} />
           </View>
 
           {modalCancelar ? (
@@ -366,7 +403,14 @@ function DetallePedido({ pedido, onClose }) {
                   value={formatPedidoFecha(pedido.creadoEn)}
                 />
                 {pedido.entrega.tipo === "local" && (
-                  <InfoRow label="Entrega" value={"Recoge en local"} />
+                  <InfoRow
+                    label="Entrega"
+                    value={
+                      pedido.source === "pos"
+                        ? "Venta de mostrador"
+                        : "Recoge en local"
+                    }
+                  />
                 )}
                 {pedido.entrega.tipo === "domicilio" && (
                   <InfoRow label="Entrega" value={"Envío a domicilio"} />
@@ -483,6 +527,16 @@ function DetallePedido({ pedido, onClose }) {
                   </TouchableOpacity>
                 </>
               )}
+
+              <TouchableOpacity
+                style={[styles.deleteBtn, loading && { opacity: 0.6 }]}
+                onPress={handleEliminar}
+                disabled={loading}
+              >
+                <Text style={styles.deleteBtnText}>
+                  {loading ? "Procesando..." : "Eliminar pedido"}
+                </Text>
+              </TouchableOpacity>
             </ScrollView>
           )}
         </View>
@@ -784,58 +838,31 @@ const styles = StyleSheet.create({
   statusText: { fontFamily: "Onest_700Bold", fontSize: 11, fontWeight: "600" },
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "flex-end",
+    ...modalStyles.overlay,
   },
   modal: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
     maxHeight: "85%",
+    ...modalStyles.surface,
   },
   modalHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: "#e5e5e5",
-    borderRadius: 2,
-    alignSelf: "center",
-    marginTop: 10,
+    ...modalStyles.handle,
   },
   modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#f0f0f0",
+    ...modalStyles.header,
   },
   modalTitle: {
-    fontFamily: "Onest_700Bold",
-    fontSize: 17,
-    color: "#1a1a1a",
+    ...modalStyles.title,
   },
-  closeBtn: {
-    width: 28,
-    height: 28,
-    backgroundColor: "#f3f3f3",
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  closeBtnText: { fontSize: 13, color: "#636366" },
+
   section: {
     padding: 16,
     borderBottomWidth: 0.5,
     borderBottomColor: "#f0f0f0",
   },
   sectionTitle: {
-    fontFamily: "Onest_900Black",
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#000000",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
     marginBottom: 10,
+    ...modalStyles.sectionTitle,
   },
   infoRow: {
     flexDirection: "row",
@@ -869,10 +896,7 @@ const styles = StyleSheet.create({
     color: ACCENT,
   },
   itemName: {
-    fontFamily: "Onest_700Bold",
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#1a1a1a",
+    ...modalStyles.label,
   },
   itemOpt: {
     fontFamily: "Onest_500Medium",
@@ -900,15 +924,23 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT,
     marginHorizontal: 20,
     marginBottom: 32,
-    borderRadius: 14,
     padding: 14,
-    alignItems: "center",
+    ...modalStyles.button,
   },
   accionBtnText: {
-    fontFamily: "Onest_700Bold",
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
+    ...modalStyles.buttonText,
+  },
+  deleteBtn: {
+    marginHorizontal: 20,
+    marginBottom: 32,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#c62828",
+    ...modalStyles.button,
+  },
+  deleteBtnText: {
+    ...modalStyles.buttonText,
+    color: "#c62828",
   },
   cancelModal: {
     backgroundColor: "#fff",
@@ -918,17 +950,12 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
   },
   cancelTitle: {
-    fontFamily: "Onest_700Bold",
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#000000",
     marginBottom: 4,
+    ...modalStyles.title,
   },
   cancelSubtitle: {
-    fontFamily: "Onest_500Medium",
-    fontSize: 13,
-    color: "#656565",
     marginBottom: 20,
+    ...modalStyles.body,
   },
   razonBtn: {
     flexDirection: "row",
@@ -959,21 +986,23 @@ const styles = StyleSheet.create({
   cancelSecBtn: {
     flex: 1,
     padding: 14,
-    borderRadius: 12,
-    backgroundColor: "#f1f1f1",
-    alignItems: "center",
+    ...modalStyles.button,
+    ...modalStyles.secondary,
   },
-  cancelSecBtnText: { fontSize: 15, fontWeight: "600", color: "#3a3a3c" },
+  cancelSecBtnText: {
+    ...modalStyles.secondaryText,
+  },
   cancelConfirmBtn: {
     flex: 1,
     padding: 14,
-    borderRadius: 12,
-    backgroundColor: "#000",
-    alignItems: "center",
+    ...modalStyles.button,
+    ...modalStyles.primary,
   },
   itemOptTitle: {
     fontFamily: "Onest_600SemiBold",
     color: "#000000",
   },
-  cancelConfirmBtnText: { fontSize: 15, fontWeight: "600", color: "#fff" },
+  cancelConfirmBtnText: {
+    ...modalStyles.buttonText,
+  },
 });

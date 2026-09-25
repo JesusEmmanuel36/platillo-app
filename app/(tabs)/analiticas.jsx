@@ -1,3 +1,4 @@
+import { ModalCloseButton, modalStyles } from "../../components/ModalUI";
 // app/(tabs)/analiticas.jsx
 
 import * as FileSystem from "expo-file-system/legacy";
@@ -711,9 +712,7 @@ function ModalCorte({
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Corte de hoy</Text>
 
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>✕</Text>
-            </TouchableOpacity>
+            <ModalCloseButton onPress={onClose} />
           </View>
 
           <ScrollView
@@ -1359,45 +1358,23 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "flex-end",
+    ...modalStyles.overlay,
   },
   modal: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
     maxHeight: "85%",
+    ...modalStyles.surface,
   },
   modalHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: "#e5e5e5",
-    borderRadius: 2,
-    alignSelf: "center",
-    marginTop: 10,
+    ...modalStyles.handle,
   },
   modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#f0f0f0",
+    ...modalStyles.header,
   },
   modalTitle: {
-    fontFamily: "Onest_700Bold",
-    fontSize: 17,
-    color: "#1a1a1a",
+    ...modalStyles.title,
   },
-  closeBtn: {
-    width: 28,
-    height: 28,
-    backgroundColor: "#f3f3f3",
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  closeBtnText: { fontSize: 13, color: "#636366" },
+
   chipBtn: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -1449,12 +1426,8 @@ const styles = StyleSheet.create({
   },
 
   corteSeccionTitulo: {
-    fontFamily: "Onest_800ExtraBold",
-    fontSize: 11,
-    color: "#636366",
-    textTransform: "uppercase",
-    letterSpacing: 0.7,
     marginBottom: 10,
+    ...modalStyles.sectionTitle,
   },
 
   corteDetalleCard: {
@@ -1510,11 +1483,8 @@ const styles = StyleSheet.create({
   },
 
   descargarCorteBtn: {
-    backgroundColor: ACCENT,
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    alignItems: "center",
+    ...modalStyles.button,
+    ...modalStyles.primary,
   },
 
   descargarCorteBtnDisabled: {
@@ -1522,8 +1492,6 @@ const styles = StyleSheet.create({
   },
 
   descargarCorteBtnText: {
-    fontFamily: "Onest_700Bold",
-    fontSize: 15,
-    color: "#fff",
+    ...modalStyles.buttonText,
   },
 });

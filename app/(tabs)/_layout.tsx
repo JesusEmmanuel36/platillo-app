@@ -1,156 +1,228 @@
-import { Colors } from "@/constants/theme";
-import { useColorScheme } from "@/hooks/use-color-scheme";
-import { Tabs } from "expo-router";
-import React from "react";
-import { Platform } from "react-native";
+import { ModalCloseButton, modalStyles } from "../../components/ModalUI";
+import { Ionicons } from "@expo/vector-icons";
+import { Href, Tabs, usePathname, useRouter } from "expo-router";
+import React, { useState } from "react";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Ellipse, Path } from "react-native-svg";
 
-function IconoPedidos({ color, size = 24 }: { color: string; size?: number }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M5.57386 4.69147C4.74068 5.38295 4.52122 6.55339 4.08231 8.89427L3.33231 12.8943C2.71512 16.186 2.40652 17.8318 3.30624 18.9159C4.20595 20 5.88048 20 9.22954 20H14.7704C18.1195 20 19.794 20 20.6937 18.9159C21.5934 17.8318 21.2849 16.186 20.6677 12.8943L19.9177 8.89427C19.4787 6.55339 19.2593 5.38295 18.4261 4.69147C17.5929 4 16.4021 4 14.0204 4H9.97954C7.59787 4 6.40703 4 5.57386 4.69147ZM9.87822 7.75007C10.1875 8.62497 11.0219 9.25 12.0004 9.25C12.9789 9.25 13.8133 8.62497 14.1225 7.75007C14.2606 7.35953 14.6891 7.15483 15.0796 7.29287C15.4701 7.43091 15.6748 7.8594 15.5368 8.24993C15.0224 9.70541 13.6343 10.75 12.0004 10.75C10.3664 10.75 8.97839 9.70541 8.46396 8.24993C8.32592 7.8594 8.53061 7.43091 8.92115 7.29287C9.31169 7.15483 9.74018 7.35953 9.87822 7.75007Z"
-        fill={color}
-      />
-    </Svg>
-  );
-}
+const ACCENT = "#e83906";
+const INACTIVE = "#8d8d92";
 
-function IconoConfiguracion({
-  color,
-  size = 24,
+type MoreItem = {
+  label: string;
+  route: string;
+  icon: keyof typeof Ionicons.glyphMap;
+};
+
+const MORE_ITEMS: MoreItem[] = [
+  { label: "Analíticas", route: "/analiticas", icon: "stats-chart" },
+  { label: "Personalizaciones", route: "/personalizaciones", icon: "options" },
+  { label: "Código QR", route: "/codigo-qr", icon: "qr-code" },
+  { label: "Configuración", route: "/configuracion", icon: "settings" },
+];
+
+function MoreMenu({
+  visible,
+  onClose,
 }: {
-  color: string;
-  size?: number;
+  visible: boolean;
+  onClose: () => void;
 }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M14.2788 2.15224C13.9085 2 13.439 2 12.5 2C11.561 2 11.0915 2 10.7212 2.15224C10.2274 2.35523 9.83509 2.74458 9.63056 3.23463C9.53719 3.45834 9.50065 3.7185 9.48635 4.09799C9.46534 4.65568 9.17716 5.17189 8.69017 5.45093C8.20318 5.72996 7.60864 5.71954 7.11149 5.45876C6.77318 5.2813 6.52789 5.18262 6.28599 5.15102C5.75609 5.08178 5.22018 5.22429 4.79616 5.5472C4.47814 5.78938 4.24339 6.1929 3.7739 6.99993C3.30441 7.80697 3.06967 8.21048 3.01735 8.60491C2.94758 9.1308 3.09118 9.66266 3.41655 10.0835C3.56506 10.2756 3.77377 10.437 4.0977 10.639C4.57391 10.936 4.88032 11.4419 4.88029 12C4.88026 12.5581 4.57386 13.0639 4.0977 13.3608C3.77372 13.5629 3.56497 13.7244 3.41645 13.9165C3.09108 14.3373 2.94749 14.8691 3.01725 15.395C3.06957 15.7894 3.30432 16.193 3.7738 17C4.24329 17.807 4.47804 18.2106 4.79606 18.4527C5.22008 18.7756 5.75599 18.9181 6.28589 18.8489C6.52778 18.8173 6.77305 18.7186 7.11133 18.5412C7.60852 18.2804 8.2031 18.27 8.69012 18.549C9.17714 18.8281 9.46533 19.3443 9.48635 19.9021C9.50065 20.2815 9.53719 20.5417 9.63056 20.7654C9.83509 21.2554 10.2274 21.6448 10.7212 21.8478C11.0915 22 11.561 22 12.5 22C13.439 22 13.9085 22 14.2788 21.8478C14.7726 21.6448 15.1649 21.2554 15.3694 20.7654C15.4628 20.5417 15.4994 20.2815 15.5137 19.902C15.5347 19.3443 15.8228 18.8281 16.3098 18.549C16.7968 18.2699 17.3914 18.2804 17.8886 18.5412C18.2269 18.7186 18.4721 18.8172 18.714 18.8488C19.2439 18.9181 19.7798 18.7756 20.2038 18.4527C20.5219 18.2105 20.7566 17.807 21.2261 16.9999C21.6956 16.1929 21.9303 15.7894 21.9827 15.395C22.0524 14.8691 21.9088 14.3372 21.5835 13.9164C21.4349 13.7243 21.2262 13.5628 20.9022 13.3608C20.4261 13.0639 20.1197 12.558 20.1197 11.9999C20.1197 11.4418 20.4261 10.9361 20.9022 10.6392C21.2263 10.4371 21.435 10.2757 21.5836 10.0835C21.9089 9.66273 22.0525 9.13087 21.9828 8.60497C21.9304 8.21055 21.6957 7.80703 21.2262 7C20.7567 6.19297 20.522 5.78945 20.2039 5.54727C19.7799 5.22436 19.244 5.08185 18.7141 5.15109C18.4722 5.18269 18.2269 5.28136 17.8887 5.4588C17.3915 5.71959 16.7969 5.73002 16.3099 5.45096C15.8229 5.17191 15.5347 4.65566 15.5136 4.09794C15.4993 3.71848 15.4628 3.45833 15.3694 3.23463C15.1649 2.74458 14.7726 2.35523 14.2788 2.15224ZM12.5 15C14.1695 15 15.5228 13.6569 15.5228 12C15.5228 10.3431 14.1695 9 12.5 9C10.8305 9 9.47716 10.3431 9.47716 12C9.47716 13.6569 10.8305 15 12.5 15Z"
-        fill={color}
-      />
-    </Svg>
-  );
-}
+  const router = useRouter();
+  const pathname = usePathname();
 
-function IconoProductos({
-  color,
-  size = 24,
-}: {
-  color: string;
-  size?: number;
-}) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      <Ellipse cx="11.5" cy="13" rx="2.5" ry="1" fill={color} />
-      <Path
-        d="M28.1,7.9C25.2,6.7,21.4,6,17.3,6C8.6,6,2,9,2,13c0,3,2.1,5.4,5.5,6.4c1,0.3,2,0.4,3.1,0.4c1.3,0,2.7-0.2,4-0.7c2.1-0.7,4.1-1.9,6.2-3.6c1.2-1,2.8-1.6,4.5-1.6h1.3c1.7,0,3-1.1,3.3-2.6C30.2,10,29.5,8.6,28.1,7.9z M11.5,16C8.9,16,7,14.7,7,13s1.9-3,4.5-3s4.5,1.3,4.5,3S14.1,16,11.5,16z"
-        fill={color}
-      />
-      <Path
-        d="M26.6,16h-1.3c-1.2,0-2.4,0.4-3.2,1.1c-2.3,1.9-4.6,3.2-6.9,4c-1.5,0.5-3.1,0.8-4.6,0.8c-1.2,0-2.5-0.2-3.6-0.5c-2.1-0.6-3.8-1.7-5-3.1V20c0,3,2.1,5.4,5.5,6.4c1,0.3,2,0.4,3.1,0.4c1.3,0,2.7-0.2,4-0.7c2.1-0.7,4.1-1.9,6.2-3.6c1.2-1,2.8-1.6,4.5-1.6h1.3c1.9,0,3.1-1.3,3.4-2.7c0-0.1,0.1-0.2,0.1-0.3v-3.2C29.1,15.6,27.9,16,26.6,16z"
-        fill={color}
-      />
-    </Svg>
-  );
-}
+  function openRoute(route: string) {
+    onClose();
+    requestAnimationFrame(() => router.push(route as Href));
+  }
 
-function IconoAnaliticas({
-  color,
-  size = 24,
-}: {
-  color: string;
-  size?: number;
-}) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M3.46447 3.46447C2 4.92893 2 7.28595 2 12C2 16.714 2 19.0711 3.46447 20.5355C4.92893 22 7.28595 22 12 22C16.714 22 19.0711 22 20.5355 20.5355C22 19.0711 22 16.714 22 12C22 7.28595 22 4.92893 20.5355 3.46447C19.0711 2 16.714 2 12 2C7.28595 2 4.92893 2 3.46447 3.46447ZM17.5762 10.4801C17.8413 10.1619 17.7983 9.68901 17.4801 9.42383C17.1619 9.15866 16.689 9.20165 16.4238 9.51986L14.6269 11.6761C14.2562 12.1211 14.0284 12.3915 13.8409 12.5609C13.7539 12.6394 13.7023 12.6708 13.6775 12.6827C13.6725 12.6852 13.6689 12.6866 13.6667 12.6875C13.6667 12.6875 13.6624 12.6858 13.659 12.6842L13.6558 12.6827C13.6311 12.6708 13.5795 12.6394 13.4925 12.5609C13.3049 12.3915 13.0772 12.1211 12.7064 11.6761L12.414 11.3252C12.0855 10.931 11.7894 10.5756 11.5128 10.3258C11.2119 10.0541 10.8328 9.81205 10.3333 9.81205C9.83384 9.81205 9.45478 10.0541 9.15384 10.3258C8.87725 10.5756 8.58113 10.931 8.25267 11.3253L6.42383 13.5199C6.15866 13.8381 6.20165 14.311 6.51986 14.5762C6.83807 14.8413 7.31099 14.7983 7.57617 14.4801L9.37306 12.3239C9.74385 11.8789 9.97155 11.6085 10.1591 11.4391C10.2461 11.3606 10.2977 11.3292 10.3225 11.3173C10.3251 11.316 10.3274 11.315 10.3292 11.3142L10.3333 11.3125C10.3356 11.3134 10.3392 11.3148 10.3442 11.3173C10.3689 11.3292 10.4205 11.3606 10.5075 11.4391C10.6951 11.6085 10.9228 11.8789 11.2936 12.3239L11.586 12.6748C11.9145 13.069 12.2106 13.4244 12.4872 13.6742C12.7881 13.9459 13.1672 14.188 13.6667 14.188C14.1662 14.188 14.5452 13.9459 14.8462 13.6742C15.1228 13.4244 15.4189 13.069 15.7473 12.6748L17.5762 10.4801Z"
-        fill={color}
-      />
-    </Svg>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable style={styles.moreCard} onPress={(event) => event.stopPropagation()}>
+          <View style={styles.moreHandle} />
+          <View style={modalStyles.header}>
+            <Text style={styles.moreTitle}>Más secciones</Text>
+            <ModalCloseButton onPress={onClose} />
+          </View>
+          {MORE_ITEMS.map((item) => {
+            const active = pathname === item.route;
+            return (
+              <TouchableOpacity
+                key={item.route}
+                style={[styles.moreRow, active && styles.moreRowActive]}
+                activeOpacity={0.75}
+                onPress={() => openRoute(item.route)}
+              >
+                <View style={[styles.moreIcon, active && styles.moreIconActive]}>
+                  <Ionicons
+                    name={item.icon}
+                    size={21}
+                    color={active ? ACCENT : "#202124"}
+                  />
+                </View>
+                <Text style={[styles.moreLabel, active && styles.moreLabelActive]}>
+                  {item.label}
+                </Text>
+                <Ionicons name="chevron-forward" size={19} color="#aaa" />
+              </TouchableOpacity>
+            );
+          })}
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  const [moreVisible, setMoreVisible] = useState(false);
+  const moreActive = MORE_ITEMS.some((item) => item.route === pathname);
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? "light"].tint,
-        headerShown: false,
-        tabBarStyle: Platform.select({
-          android: {
-            paddingHorizontal: 24,
-            paddingTop: 6,
-            paddingBottom: 10,
+    <>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: ACCENT,
+          tabBarInactiveTintColor: INACTIVE,
+          tabBarHideOnKeyboard: true,
+          tabBarStyle: {
+            paddingHorizontal: 10,
+            paddingTop: 7,
+            paddingBottom: Platform.OS === "android" ? 8 + insets.bottom : 5,
             height: 64 + insets.bottom,
+            borderTopColor: "#ededed",
+            backgroundColor: "#fff",
           },
-          ios: {
-            paddingHorizontal: 24,
-            paddingTop: 6,
-            paddingBottom: 6,
+          tabBarIconStyle: { marginBottom: -2 },
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontFamily: "Onest_600SemiBold",
           },
-        }),
-
-        tabBarItemStyle: {
-          justifyContent: "center",
-          alignItems: "center",
-        },
-        tabBarIconStyle: {
-          marginTop: 4,
-        },
-        tabBarLabelStyle: {
-          marginTop: 1,
-          fontSize: 14,
-          fontFamily: "Onest_500Medium",
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="analiticas"
-        options={{
-          title: "Analíticas",
-          tabBarIcon: ({ color }) => (
-            <IconoAnaliticas color={color} size={28} />
-          ),
         }}
-      />
-
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Pedidos",
-          tabBarIcon: ({ color }) => <IconoPedidos color={color} size={32} />,
-        }}
-      />
-
-      <Tabs.Screen
-        name="productos"
-        options={{
-          title: "Productos",
-          tabBarIcon: ({ color }) => <IconoProductos color={color} size={28} />,
-        }}
-      />
-
-      <Tabs.Screen
-        name="configuracion"
-        options={{
-          title: "Ajustes",
-          tabBarIcon: ({ color }) => (
-            <IconoConfiguracion color={color} size={28} />
-          ),
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: "Pedidos",
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="receipt-outline" size={27} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="productos"
+          options={{
+            title: "Productos",
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="fast-food-outline" size={26} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="pos"
+          options={{
+            title: "Punto de venta",
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="storefront-outline" size={26} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="mas"
+          options={{
+            title: "Más",
+            tabBarActiveTintColor: moreActive ? ACCENT : INACTIVE,
+            tabBarIcon: () => (
+              <Ionicons
+                name="menu"
+                size={28}
+                color={moreActive ? ACCENT : INACTIVE}
+              />
+            ),
+            tabBarButton: (props) => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Más secciones"
+                style={props.style}
+                onPress={() => setMoreVisible(true)}
+              >
+                {props.children}
+              </Pressable>
+            ),
+          }}
+        />
+        <Tabs.Screen name="analiticas" options={{ href: null }} />
+        <Tabs.Screen name="personalizaciones" options={{ href: null }} />
+        <Tabs.Screen name="codigo-qr" options={{ href: null }} />
+        <Tabs.Screen name="configuracion" options={{ href: null }} />
+      </Tabs>
+      <MoreMenu visible={moreVisible} onClose={() => setMoreVisible(false)} />
+    </>
   );
 }
+
+const styles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    justifyContent: "flex-end",
+    ...modalStyles.overlay,
+  },
+  moreCard: {
+    marginHorizontal: 12,
+    marginBottom: 76,
+    paddingHorizontal: 14,
+    paddingTop: 9,
+    paddingBottom: 14,
+    borderRadius: 24,
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
+  },
+  moreHandle: {
+    ...modalStyles.handle,
+  },
+  moreTitle: {
+    paddingHorizontal: 6,
+    marginBottom: 8,
+    ...modalStyles.title,
+  },
+  moreRow: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 8,
+    borderRadius: 16,
+  },
+  moreRowActive: { backgroundColor: "#fff3ee" },
+  moreIcon: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 13,
+    backgroundColor: "#f4f4f4",
+  },
+  moreIconActive: { backgroundColor: "#ffe5db" },
+  moreLabel: {
+    flex: 1,
+    fontFamily: "Onest_600SemiBold",
+    fontSize: 15,
+    color: "#252525",
+  },
+  moreLabelActive: { color: ACCENT },
+});

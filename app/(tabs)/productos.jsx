@@ -1,4 +1,6 @@
+import { ModalCloseButton, modalStyles } from "../../components/ModalUI";
 import * as ImagePicker from "expo-image-picker";
+import { useFocusEffect } from "expo-router";
 import {
   addDoc,
   collection,
@@ -9,7 +11,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -27,6 +29,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebaseConfig";
+import { panelApi } from "../../lib/panelApi";
 import { uploadToCloudinary } from "../../utils/cloudinary";
 
 const ACCENT = "#e83906";
@@ -98,6 +101,7 @@ function ProductoCard({ producto, onPress }) {
 function FormularioProducto({
   inicial,
   categorias,
+  optionTemplates = [],
   onGuardar,
   onCancelar,
   loading,
@@ -110,6 +114,25 @@ function FormularioProducto({
 
   function agregarOpcion() {
     setForm((f) => ({ ...f, options: [...f.options, opcionVacia()] }));
+  }
+
+  function agregarPlantilla(template) {
+    setForm((current) => ({
+      ...current,
+      options: [
+        ...current.options,
+        {
+          title: template.title,
+          type: template.type,
+          required: template.required === true,
+          maxSelectable: template.maxSelectable || 1,
+          choices: (template.choices || []).map((choice) => ({
+            name: choice.name,
+            price: String(choice.price || ""),
+          })),
+        },
+      ],
+    }));
   }
 
   function eliminarOpcion(oi) {
@@ -351,6 +374,21 @@ function FormularioProducto({
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Opciones</Text>
 
+        {optionTemplates.length > 0 && (
+          <>
+            <Text style={styles.fieldLabel}>Agregar una guardada</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {optionTemplates.map((template) => (
+                  <TouchableOpacity key={template.id} style={styles.templateChip} onPress={() => agregarPlantilla(template)}>
+                    <Text style={styles.templateChipText}>+ {template.title}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+          </>
+        )}
+
         {form.options.map((opcion, oi) => (
           <View key={oi} style={styles.opcionCard}>
             <View style={styles.opcionHeader}>
@@ -496,7 +534,7 @@ function FormularioProducto({
   );
 }
 
-function DetalleProducto({ producto, categorias, onClose }) {
+function DetalleProducto({ producto, categorias, optionTemplates, onClose }) {
   const [vista, setVista] = useState("detalle");
 
   const [loading, setLoading] = useState(false);
@@ -586,9 +624,7 @@ function DetalleProducto({ producto, categorias, onClose }) {
             <Text style={styles.modalTitle} numberOfLines={1}>
               {vista === "editar" ? "Editar producto" : producto.name}
             </Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.closeBtnText}>✕</Text>
-            </TouchableOpacity>
+            <ModalCloseButton onPress={onClose} />
           </View>
 
           {vista === "detalle" ? (
@@ -660,6 +696,7 @@ function DetalleProducto({ producto, categorias, onClose }) {
                 restaurantId: producto.restaurantId,
               }}
               categorias={categorias}
+              optionTemplates={optionTemplates}
               onGuardar={handleGuardar}
               onCancelar={() => setVista("detalle")}
               loading={loading}
@@ -677,6 +714,7 @@ export default function ProductosScreen() {
   const [productoSeleccionado, setProductoSeleccionado] = useState(null);
   const [modalAnadir, setModalAnadir] = useState(false);
   const [loadingAnadir, setLoadingAnadir] = useState(false);
+  const [optionTemplates, setOptionTemplates] = useState([]);
 
   const categorias = [...new Set(productos.map((p) => p.category))];
   const productosPorCategoria = categorias.map((cat) =>
@@ -703,6 +741,22 @@ export default function ProductosScreen() {
     });
     return () => unsubscribe();
   }, [restaurantId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      panelApi("/api/panel/option-templates")
+        .then((data) => {
+          if (active) setOptionTemplates(data.templates || []);
+        })
+        .catch(() => {
+          if (active) setOptionTemplates([]);
+        });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   async function handleAnadir(form) {
     if (!form.name.trim()) {
@@ -796,6 +850,7 @@ export default function ProductosScreen() {
         <DetalleProducto
           producto={productoSeleccionado}
           categorias={categorias}
+          optionTemplates={optionTemplates}
           onClose={() => setProductoSeleccionado(null)}
         />
       )}
@@ -811,16 +866,12 @@ export default function ProductosScreen() {
             <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Nuevo producto</Text>
-              <TouchableOpacity
-                onPress={() => setModalAnadir(false)}
-                style={styles.closeBtn}
-              >
-                <Text style={styles.closeBtnText}>✕</Text>
-              </TouchableOpacity>
+              <ModalCloseButton onPress={() => setModalAnadir(false)} />
             </View>
             <FormularioProducto
               inicial={productoVacio(restaurantId)}
               categorias={categorias}
+              optionTemplates={optionTemplates}
               onGuardar={handleAnadir}
               onCancelar={() => setModalAnadir(false)}
               loading={loadingAnadir}
@@ -926,47 +977,24 @@ const styles = StyleSheet.create({
   stockText: { fontFamily: "Onest_700Bold", fontSize: 10 },
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "flex-end",
+    ...modalStyles.overlay,
   },
   modal: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
     maxHeight: "92%",
+    ...modalStyles.surface,
   },
   modalHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: "#e5e5e5",
-    borderRadius: 2,
-    alignSelf: "center",
-    marginTop: 10,
+    ...modalStyles.handle,
   },
   modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#f0f0f0",
+    ...modalStyles.header,
   },
   modalTitle: {
-    fontFamily: "Onest_700Bold",
-    fontSize: 17,
-    color: "#1a1a1a",
-    flex: 1,
     marginRight: 8,
+    ...modalStyles.title,
   },
-  closeBtn: {
-    width: 28,
-    height: 28,
-    backgroundColor: "#f3f3f3",
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  closeBtnText: { fontSize: 13, color: "#636366" },
+
   modalImage: { width: "100%", height: 200 },
   section: {
     padding: 16,
@@ -974,12 +1002,8 @@ const styles = StyleSheet.create({
     borderBottomColor: "#f0f0f0",
   },
   sectionTitle: {
-    fontFamily: "Onest_900Black",
-    fontSize: 11,
-    color: "#000",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
     marginBottom: 12,
+    ...modalStyles.sectionTitle,
   },
   modalDesc: {
     fontFamily: "Onest_500Medium",
@@ -1001,35 +1025,26 @@ const styles = StyleSheet.create({
     backgroundColor: ACCENT,
     marginHorizontal: 20,
     marginTop: 16,
-    borderRadius: 14,
     padding: 14,
-    alignItems: "center",
+    ...modalStyles.button,
   },
-  accionBtnText: { fontFamily: "Onest_700Bold", color: "#fff", fontSize: 15 },
+  accionBtnText: {
+    ...modalStyles.buttonText,
+  },
   fieldLabel: {
-    fontFamily: "Onest_600SemiBold",
-    fontSize: 13,
-    color: "#1a1a1a",
     marginBottom: 6,
     marginTop: 4,
+    ...modalStyles.label,
   },
   fieldHint: {
-    fontFamily: "Onest_400Regular",
-    fontSize: 12,
-    color: "#8e8e93",
     marginBottom: 8,
     marginTop: -4,
+    ...modalStyles.body,
   },
   input: {
-    backgroundColor: "#f6f6f6",
-    borderRadius: 10,
     padding: 12,
-    fontFamily: "Onest_500Medium",
-    fontSize: 14,
-    color: "#1a1a1a",
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#ececec",
+    ...modalStyles.input,
   },
   segmented: {
     flexDirection: "row",
@@ -1053,9 +1068,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   switchLabel: {
-    fontFamily: "Onest_600SemiBold",
-    fontSize: 14,
-    color: "#1a1a1a",
+    ...modalStyles.label,
   },
   chipBtn: {
     paddingHorizontal: 12,
@@ -1150,23 +1163,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#636366",
   },
+  templateChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 11,
+    backgroundColor: ACCENT_LIGHT,
+  },
+  templateChipText: {
+    fontFamily: "Onest_600SemiBold",
+    fontSize: 13,
+    color: ACCENT,
+  },
   formActions: {
     flexDirection: "row",
-    gap: 10,
-    paddingHorizontal: 16,
     paddingTop: 16,
+    ...modalStyles.footer,
   },
   cancelSecBtn: {
     flex: 1,
     padding: 14,
-    borderRadius: 12,
-    backgroundColor: "#f1f1f1",
-    alignItems: "center",
+    ...modalStyles.button,
+    ...modalStyles.secondary,
   },
   cancelSecBtnText: {
-    fontFamily: "Onest_600SemiBold",
-    fontSize: 15,
-    color: "#3a3a3c",
+    ...modalStyles.secondaryText,
   },
 
   previewImage: {
